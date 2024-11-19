@@ -102,7 +102,7 @@ impl Handler for ClientHandler {
         data: &[u8],
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
-        println!("User input {data:?}");
+        trace!("User input {data:?}");
 
         match data {
             [3] => {

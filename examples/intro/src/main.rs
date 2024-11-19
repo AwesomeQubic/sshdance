@@ -1,4 +1,6 @@
-use std::{collections::VecDeque, net::{IpAddr, Ipv4Addr, SocketAddr}};
+//This is a half serious I use for my ssh site so have fun :3
+
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use anyhow::Ok;
 use async_trait::async_trait;
@@ -7,7 +9,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
-    widgets::{List, Paragraph},
+    widgets::Paragraph,
     Frame,
 };
 use sshdance::{

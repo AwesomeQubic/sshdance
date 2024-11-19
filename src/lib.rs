@@ -3,7 +3,7 @@ use std::{net::SocketAddr, sync::Arc};
 use client::ClientHandler;
 use russh::{server::{Config, Server}, MethodSet};
 use russh_keys::key::KeyPair;
-use site::{Page, SshPage};
+use site::SshPage;
 use tracing::info;
 
 mod client;

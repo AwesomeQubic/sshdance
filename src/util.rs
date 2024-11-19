@@ -7,7 +7,7 @@ use tokio::{
     sync::mpsc::{unbounded_channel, UnboundedSender},
     task::JoinHandle,
 };
-use tracing::{info, trace, warn};
+use tracing::{trace, warn};
 
 pub type SshTerminal = Terminal<CrosstermBackend<TerminalHandle>>;
 
