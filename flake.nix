@@ -16,6 +16,8 @@
           # Additional dev-shell environment variables can be set directly
           # MY_CUSTOM_DEVELOPMENT_VAR = "something else";
 
+          RUST_LOG="sshdance=trace";
+
           # Extra inputs can be added here; cargo and rustc are provided by default.
           packages = with pkgs; [
             openssl

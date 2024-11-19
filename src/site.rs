@@ -9,7 +9,7 @@ pub type SshPage = Box<dyn Page + Sync + Send>;
 pub trait Page {
     async fn handle_input(&mut self, input: SshInput) -> anyhow::Result<Code>;
 
-    async fn tick(&mut self) -> anyhow::Result<Code> {
+    fn tick(&mut self) -> anyhow::Result<Code> {
         Ok(Code::SkipRenderer)
     }
 

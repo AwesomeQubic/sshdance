@@ -1,12 +1,13 @@
 use std::{io::Write as _, mem::replace};
 
+use anyhow::Context;
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use russh::{server::Handle, ChannelId, CryptoVec};
 use tokio::{
     sync::mpsc::{unbounded_channel, UnboundedSender},
     task::JoinHandle,
 };
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 pub type SshTerminal = Terminal<CrosstermBackend<TerminalHandle>>;
 
@@ -15,7 +16,7 @@ pub struct TerminalHandle {
     sink: CryptoVec,
 
     tx: UnboundedSender<WriteMessage>,
-    handle: JoinHandle<()>,
+    handle: Option<JoinHandle<()>>,
 }
 
 enum WriteMessage {
@@ -23,10 +24,12 @@ enum WriteMessage {
     Write(CryptoVec),
 }
 
-impl Drop for TerminalHandle {
+impl Drop for  TerminalHandle {
     fn drop(&mut self) {
-        info!("Closing send task for handle");
-        self.handle.abort();
+        if let Some(handle) = self.handle.as_mut() {
+            warn!("Ungracefully shuting down connection");
+            handle.abort();
+        }
     }
 }
 
@@ -42,11 +45,14 @@ impl TerminalHandle {
 
                 match data {
                     WriteMessage::Close => {
+                        trace!("Closing session with client");
                         if let Err(_) = handle.close(channel_id).await {
                             warn!("Encounter error while terminating connection")
                         };
+                        return;
                     }
                     WriteMessage::Write(data) => {
+                        trace!("Sending data to client");
                         if let Err(err) = handle.data(channel_id, data).await {
                             warn!("Encounter error {err:?} while sending data to connection")
                         };
@@ -58,12 +64,18 @@ impl TerminalHandle {
         TerminalHandle {
             sink: CryptoVec::new(),
             tx,
-            handle,
+            handle: Some(handle),
         }
     }
 
-    pub fn close(&mut self) {
-        self.tx.send(WriteMessage::Close);
+    pub async fn close(&mut self) -> anyhow::Result<()>{
+        self.tx.send(WriteMessage::Close)?;
+
+        let mut handle_option = replace(&mut self.handle, None);
+        let handle = handle_option.as_mut().with_context(|| "Closing a already closed connection")?;
+        handle.await?;
+
+        anyhow::Ok(())
     }
 }
 

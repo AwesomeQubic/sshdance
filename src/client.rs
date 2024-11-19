@@ -1,5 +1,6 @@
 use std::future::pending;
 use std::io::Write;
+use std::mem::replace;
 
 use crate::site::Code;
 use crate::site::EscapeCode;
@@ -38,6 +39,7 @@ use tokio::time::Instant;
 use tokio::time::Interval;
 use tracing::debug;
 use tracing::info;
+use tracing::trace;
 use tracing::warn;
 
 pub struct ClientHandler {
@@ -260,16 +262,22 @@ impl ClientTask {
                         anyhow::Result::Ok(x) => match x {
                             Code::ChangeTo(x) => {
                                 self.page = x.into();
-                                self.render().await;
+                                if let Err(error) = self.render().await {
+                                    warn!("Frame rendering failed with error {error} after changing to new page");
+                                }
                             }
                             Code::SkipRenderer => {
                                 continue;
                             }
                             Code::Render => {
-                                self.render().await;
+                                if let Err(error) = self.render().await {
+                                    warn!("Frame rendering failed with error {error}");
+                                }
                             }
                             Code::Terminate => {
-                                self.terminate();
+                                if let Err(error) = self.terminate().await {
+                                    warn!("Encountered error {error} while terminating connection")
+                                };
                                 return;
                             }
                         },
@@ -283,21 +291,27 @@ impl ClientTask {
                     }
                 },
                 _anim = anim_future => {
-                    let code = self.page.page.tick().await;
+                    let code = self.page.page.tick();
                     match code {
                         anyhow::Result::Ok(x) => match x {
                             Code::ChangeTo(x) => {
                                 self.page = x.into();
-                                self.render().await;
+                                if let Err(error) = self.render().await {
+                                    warn!("Encountered error while rendering page {error} after a page switch");
+                                }
                             }
                             Code::SkipRenderer => {
                                 continue;
                             }
                             Code::Render => {
-                                self.render().await;
+                                if let Err(error) = self.render().await {
+                                    warn!("Encountered error while rendering page {error}");
+                                }
                             }
                             Code::Terminate => {
-                                self.terminate();
+                                if let Err(error) = self.terminate().await {
+                                    warn!("Encountered error {error} while terminating connection")
+                                };
                                 return;
                             }
                         },
@@ -314,8 +328,13 @@ impl ClientTask {
         }
     }
 
-    async fn terminate(&mut self) -> Result<()> {
-        if let Some(term) = self.term.as_mut() {
+    async fn terminate(mut self) -> Result<()> {
+        trace!("Terminating connection to client");
+        if let Some(mut term) = replace(&mut self.term, None) {
+
+            //TODO make it less hacky
+            term.show_cursor()?;
+
             let backend = term.backend_mut();
             //backend.execute(DisableMouseCapture)?;
             backend.execute(cursor::Show)?;
@@ -324,7 +343,7 @@ impl ClientTask {
             let writer = backend.writer_mut();
 
             writer.flush()?;
-            writer.close();
+            writer.close().await?;
         }
         Ok(())
     }

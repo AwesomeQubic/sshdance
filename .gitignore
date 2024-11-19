@@ -1,3 +1,5 @@
 target
 .direnv
 sshsite_run
+flamegraph.svg
+perf.data
