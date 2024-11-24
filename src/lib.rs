@@ -7,7 +7,7 @@ use site::SshPage;
 use tracing::info;
 
 mod client;
-mod util;
+mod handle;
 pub mod site;
 
 pub struct SshDanceBuilder {

@@ -82,7 +82,8 @@ impl TerminalHandle {
 // The crossterm backend writes to the terminal handle.
 impl std::io::Write for TerminalHandle {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.sink.write(buf)
+        self.sink.extend(buf);
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
