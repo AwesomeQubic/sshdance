@@ -24,7 +24,7 @@ enum WriteMessage {
     Write(CryptoVec),
 }
 
-impl Drop for  TerminalHandle {
+impl Drop for TerminalHandle {
     fn drop(&mut self) {
         if let Some(handle) = self.handle.as_mut() {
             warn!("Ungracefully shuting down connection");
@@ -68,11 +68,13 @@ impl TerminalHandle {
         }
     }
 
-    pub async fn close(&mut self) -> anyhow::Result<()>{
+    pub async fn close(&mut self) -> anyhow::Result<()> {
         self.tx.send(WriteMessage::Close)?;
 
         let mut handle_option = replace(&mut self.handle, None);
-        let handle = handle_option.as_mut().with_context(|| "Closing a already closed connection")?;
+        let handle = handle_option
+            .as_mut()
+            .with_context(|| "Closing a already closed connection")?;
         handle.await?;
 
         anyhow::Ok(())

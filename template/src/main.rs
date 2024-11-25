@@ -119,7 +119,7 @@ impl Page for IntroPage {
         }
         self.text.push(Line::styled(
             *BOOT_SPLASH.choose(&mut rand::thread_rng()).unwrap(),
-            Style::new().fg(Color::DarkGray),
+            Style::new().fg(Color::DarkGray)
         ));
         Ok(Code::Render)
     }

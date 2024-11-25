@@ -2,12 +2,12 @@ use std::future::pending;
 use std::io::Write;
 use std::mem::replace;
 
+use crate::handle::SshTerminal;
+use crate::handle::TerminalHandle;
 use crate::site::Code;
 use crate::site::EscapeCode;
 use crate::site::SshInput;
 use crate::site::SshPage;
-use crate::handle::SshTerminal;
-use crate::handle::TerminalHandle;
 use anyhow::Context;
 use anyhow::Ok;
 use anyhow::Result;
@@ -331,7 +331,6 @@ impl ClientTask {
     async fn terminate(mut self) -> Result<()> {
         trace!("Terminating connection to client");
         if let Some(mut term) = replace(&mut self.term, None) {
-
             //TODO make it less hacky
             term.show_cursor()?;
 
@@ -379,11 +378,10 @@ impl ClientTask {
                     .as_mut()
                     .context("No term initialized")?
                     .resize(rect)?;
+                self.page.page.update_screen_rect(rect);
                 Ok(Code::Render)
             }
-            ThreadMessage::Input(SshInput::Special(EscapeCode::CtrlC)) => {
-                Ok(Code::Terminate)
-            }
+            ThreadMessage::Input(SshInput::Special(EscapeCode::CtrlC)) => Ok(Code::Terminate),
             ThreadMessage::Input(x) => return self.page.page.handle_input(x).await,
         }
     }

@@ -1,7 +1,10 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use client::ClientHandler;
-use russh::{server::{Config, Server}, MethodSet};
+use russh::{
+    server::{Config, Server},
+    MethodSet,
+};
 use russh_keys::key::KeyPair;
 use site::SshPage;
 use tracing::info;
@@ -13,13 +16,20 @@ pub mod site;
 pub struct SshDanceBuilder {
     socket: SocketAddr,
     key_pair: Vec<KeyPair>,
-    initial_site: fn(Option<std::net::SocketAddr>) -> SshPage
+    initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
 }
 
 impl SshDanceBuilder {
-    pub fn new(socket: SocketAddr, initial_site: fn(Option<std::net::SocketAddr>) -> SshPage) -> SshDanceBuilder {
-        SshDanceBuilder { socket, key_pair: vec![KeyPair::generate_ed25519()], initial_site }
-    } 
+    pub fn new(
+        socket: SocketAddr,
+        initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
+    ) -> SshDanceBuilder {
+        SshDanceBuilder {
+            socket,
+            key_pair: vec![KeyPair::generate_ed25519()],
+            initial_site,
+        }
+    }
 
     pub fn set_keys(mut self, key_pair: Vec<KeyPair>) -> Self {
         self.key_pair = key_pair;
@@ -36,20 +46,20 @@ impl SshDanceBuilder {
             ..Default::default()
         };
 
-        let mut server = SshSiteServer { initial_site: self.initial_site };
+        let mut server = SshSiteServer {
+            initial_site: self.initial_site,
+        };
         server.run(config, self.socket).await
     }
 }
 
 pub struct SshSiteServer {
-    initial_site: fn(Option<std::net::SocketAddr>) -> SshPage
+    initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
 }
 
 impl SshSiteServer {
     async fn run(&mut self, config: Config, addr: SocketAddr) -> Result<(), anyhow::Error> {
-
-        self.run_on_address(Arc::new(config), addr)
-            .await?;
+        self.run_on_address(Arc::new(config), addr).await?;
         Ok(())
     }
 }
