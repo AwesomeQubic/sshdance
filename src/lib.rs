@@ -12,6 +12,7 @@ use tracing::info;
 mod client;
 mod handle;
 pub mod site;
+pub mod util;
 
 pub struct SshDanceBuilder {
     socket: SocketAddr,
