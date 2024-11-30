@@ -1,6 +1,9 @@
 //This is a half serious I use for my ssh site so have fun :3
 
-use std::{f64::consts::E, net::{IpAddr, Ipv4Addr, SocketAddr}};
+use std::{
+    f64::consts::E,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+};
 
 use anyhow::Ok;
 use async_trait::async_trait;
@@ -22,10 +25,9 @@ use tracing::{info, warn};
 
 const COLOGS: [Color; 4] = [Color::Green, Color::Red, Color::Magenta, Color::Cyan];
 
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    console_subscriber::init();
     let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2222);
     SshDanceBuilder::new(socket, |_| Asteroids::new())
         .run()
@@ -44,7 +46,7 @@ struct Asteroid {
     velocity: (i32, i32),
     pos: (u16, u16),
     start: (u16, u16),
-    color: Color
+    color: Color,
 }
 
 impl Asteroids {
@@ -59,27 +61,39 @@ impl Asteroids {
 
     pub fn render_background(&mut self, frame: &mut Frame<'_>, area: Rect) {
         let (area, max_size) = self.viewpoint_data.unwrap();
-        self.circles.retain(|x| x.radius < max_size);
+        self.circles.retain(|x| x.radius < 25.0);
 
         let circles = &self.circles;
 
         let asteroids = &self.asteroids;
 
-        let drawn = Canvas::default()
+        let secondary = Canvas::default()
             .x_bounds([0f64, area.width as f64])
             .y_bounds([0f64, area.height as f64])
-            .marker(ratatui::symbols::Marker::Block)
+            .marker(ratatui::symbols::Marker::Dot)
             .paint(|canvas| {
                 for ele in circles {
                     canvas.draw(ele);
                 }
+            });
 
-                canvas.layer();
+        frame.render_widget(secondary, area);
 
+        let primary = Canvas::default()
+            .x_bounds([0f64, area.width as f64])
+            .y_bounds([0f64, area.height as f64])
+            .marker(ratatui::symbols::Marker::Bar)
+            .paint(|canvas| {
                 for ele in asteroids {
                     let (current_x, current_y) = ele.pos;
                     let (start_x, start_y) = ele.start;
-                    canvas.draw(&Line::new(current_x as f64, current_y as f64, start_x as f64, start_y as f64, ele.color.clone()));
+                    canvas.draw(&Line::new(
+                        current_x as f64,
+                        current_y as f64,
+                        start_x as f64,
+                        start_y as f64,
+                        ele.color.clone(),
+                    ));
                 }
 
                 canvas.layer();
@@ -94,10 +108,9 @@ impl Asteroids {
                         color: Color::White,
                     });
                 }
-
             });
 
-        frame.render_widget(drawn, area);
+        frame.render_widget(primary, area);
     }
 
     fn update_rect(&mut self, area: Rect) {
@@ -117,7 +130,7 @@ impl Page for Asteroids {
     }
 
     fn get_tps(&self) -> Option<u16> {
-        Some(10)
+        Some(100)
     }
 
     fn tick(&mut self) -> anyhow::Result<Code> {
@@ -129,36 +142,44 @@ impl Page for Asteroids {
                     self.spawn = a;
                 }
                 None => {
-                    let start = ((area.x + area.width) / 2, area.bottom());
-                    self.asteroids.push(Asteroid { velocity: (
-                        rand.gen_range(-5..5),
-                        rand.gen_range(-3..0),
-                    ), pos: start, start, color: COLOGS.choose(&mut rand).unwrap().clone()});
+                    let start = (rand.gen_range(area.x..area.x + area.width), area.bottom());
+                    self.asteroids.push(Asteroid {
+                        velocity: (rand.gen_range(-10..10), rand.gen_range(-10..0)),
+                        pos: start,
+                        start,
+                        color: COLOGS.choose(&mut rand).unwrap().clone(),
+                    });
 
                     self.spawn = 3;
                 }
             };
 
             for ele in &mut self.circles {
-                ele.radius += 1f64;
+                ele.radius += 5f64;
             }
-    
+
             self.asteroids.retain_mut(|ele| {
                 let (x, y) = ele.pos;
                 let (x_vel, y_vel) = ele.velocity;
-    
+
                 let new_x = ((x as i32) + x_vel) as u16;
                 let new_y = ((y as i32) + y_vel) as u16;
-    
-                if (area.x..area.x+area.width).contains(&new_x) && (area.y..area.y + area.height).contains(&new_y) {
+
+                if (area.x..area.x + area.width).contains(&new_x)
+                    && (area.y..area.y + area.height).contains(&new_y)
+                {
                     ele.pos = (new_x, new_y);
                     true
                 } else {
-                    self.circles.push(Circle { x: x.into(), y: y.into(), radius: 1f64, color: ele.color.clone() });
+                    self.circles.push(Circle {
+                        x: x.into(),
+                        y: y.into(),
+                        radius: 1f64,
+                        color: ele.color.clone(),
+                    });
                     false
                 }
             });
-    
         }
 
         Ok(Code::Render)
