@@ -1,6 +1,9 @@
 use std::future::pending;
 use std::io::Write;
 use std::mem::replace;
+use std::panic;
+use std::panic::AssertUnwindSafe;
+use std::pin::pin;
 
 use crate::handle::SshTerminal;
 use crate::handle::TerminalHandle;
@@ -9,6 +12,7 @@ use crate::site::EscapeCode;
 use crate::site::SshInput;
 use crate::site::SshPage;
 use anyhow::Context;
+use anyhow::Error;
 use anyhow::Ok;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -252,6 +256,7 @@ impl ClientTask {
         loop {
             let rx_future = self.rx.recv();
             let anim_future = self.page.animation_interval();
+
             tokio::select! {
                 message = rx_future => {
                     let Some(event) = message else {
@@ -262,16 +267,16 @@ impl ClientTask {
                         anyhow::Result::Ok(x) => match x {
                             Code::ChangeTo(x) => {
                                 self.page = x.into();
-                                if let Err(error) = self.render().await {
-                                    warn!("Frame rendering failed with error {error} after changing to new page");
-                                }
+
                             }
                             Code::SkipRenderer => {
                                 continue;
                             }
                             Code::Render => {
-                                if let Err(error) = self.render().await {
-                                    warn!("Frame rendering failed with error {error}");
+                                let rendered = self.render().await;
+                                self = rendered.ownership;
+                                if rendered.results.is_err() {
+                                    warn!("Encountered error doing rendering");
                                 }
                             }
                             Code::Terminate => {
@@ -296,16 +301,20 @@ impl ClientTask {
                         anyhow::Result::Ok(x) => match x {
                             Code::ChangeTo(x) => {
                                 self.page = x.into();
-                                if let Err(error) = self.render().await {
-                                    warn!("Encountered error while rendering page {error} after a page switch");
+                                let rendered = self.render().await;
+                                self = rendered.ownership;
+                                if rendered.results.is_err() {
+                                    warn!("Encountered error doing rendering");
                                 }
                             }
                             Code::SkipRenderer => {
                                 continue;
                             }
                             Code::Render => {
-                                if let Err(error) = self.render().await {
-                                    warn!("Encountered error while rendering page {error}");
+                                let rendered = self.render().await;
+                                self = rendered.ownership;
+                                if rendered.results.is_err() {
+                                    warn!("Encountered error doing rendering");
                                 }
                             }
                             Code::Terminate => {
@@ -386,17 +395,49 @@ impl ClientTask {
         }
     }
 
-    async fn render(&mut self) -> Result<(), anyhow::Error> {
+    async fn render(mut self) -> RenderResult {
         debug!("{:?}: Redrawing terminal", self.ip);
-        let term = self.term.as_mut().context("No term")?;
-        let renderer = &mut *self.page.page;
 
-        term.draw(|frame| {
-            let area = frame.area();
-            renderer.render(frame, area);
+        let back = tokio::task::spawn_blocking(move || {
+            let self_mut = &mut self;
+            //TODO prove unwind safety of renderer and term
+            let out = panic::catch_unwind(AssertUnwindSafe(|| {
+                let Some(term) = self_mut.term.as_mut() else {
+                    return Result::Err(anyhow::Error::msg("Terminal does not exist"));
+                };
+                let renderer = &mut *self_mut.page.page;
+
+                let draw = term
+                    .draw(|frame| {
+                        let area = frame.area();
+                        renderer.render(frame, area);
+                    })
+                    .map(|_| ());
+
+                Result::Ok(())
+            }));
+
+            let processed = match out {
+                std::result::Result::Ok(std::result::Result::Ok(_)) => anyhow::Ok(()),
+                std::result::Result::Ok(std::result::Result::Err(_)) => {
+                    anyhow::Result::Err(Error::msg("Error in rendering"))
+                }
+                Err(_) => anyhow::Result::Err(Error::msg("Renderer panicked")),
+            };
+
+            RenderResult {
+                ownership: self,
+                results: processed,
+            }
         })
-        .unwrap();
+        .await
+        .unwrap(); //Unwrap is safe since all possibilities of a panic are checked
 
-        Ok(())
+        back
     }
+}
+
+struct RenderResult {
+    ownership: ClientTask,
+    results: Result<()>,
 }
