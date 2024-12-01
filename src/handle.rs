@@ -91,7 +91,7 @@ impl std::io::Write for TerminalHandle {
     fn flush(&mut self) -> std::io::Result<()> {
         let old_vec = replace(&mut self.sink, CryptoVec::new());
         if let Err(_) = self.tx.send(WriteMessage::Write(old_vec)) {
-            warn!("Error sending message to task but rusts stupidly does not let us represent that so idk have fun");
+            return std::io::Result::Err(std::io::ErrorKind::BrokenPipe.into());
         };
         Ok(())
     }
