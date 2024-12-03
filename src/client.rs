@@ -26,6 +26,7 @@ use ratatui::prelude::CrosstermBackend;
 use ratatui::Terminal;
 use ratatui::TerminalOptions;
 use ratatui::Viewport;
+use replace_with::replace_with_or_abort;
 use russh::server::Auth;
 use russh::server::Handler;
 use russh::server::Msg;
@@ -265,9 +266,8 @@ impl ClientTask {
 
                     match self.handle_input(event).await {
                         anyhow::Result::Ok(x) => match x {
-                            Code::ChangeTo(x) => {
-                                self.page = x.into();
-
+                            Code::ChangeTo => {
+                                self = self.slingshot().await;
                             }
                             Code::SkipRenderer => {
                                 continue;
@@ -299,13 +299,8 @@ impl ClientTask {
                     let code = self.page.page.tick();
                     match code {
                         anyhow::Result::Ok(x) => match x {
-                            Code::ChangeTo(x) => {
-                                self.page = x.into();
-                                let rendered = self.render().await;
-                                self = rendered.ownership;
-                                if rendered.results.is_err() {
-                                    warn!("Encountered error doing rendering");
-                                }
+                            Code::ChangeTo => {
+                                self = self.slingshot().await;
                             }
                             Code::SkipRenderer => {
                                 continue;
@@ -335,6 +330,19 @@ impl ClientTask {
                 }
             }
         }
+    }
+
+    async fn slingshot(mut self) -> Self {
+        replace_with_or_abort(&mut self.page, |old| {
+            old.page.slingshot().into()
+        });
+
+        let rendered = self.render().await;
+        if rendered.results.is_err() {
+            warn!("Encountered error doing rendering");
+        }
+
+        rendered.ownership
     }
 
     async fn terminate(mut self) -> Result<()> {
