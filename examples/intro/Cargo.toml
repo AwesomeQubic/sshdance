@@ -5,13 +5,13 @@ edition = "2021"
 
 [dependencies]
 sshdance = { path = "../../" }
-tokio = { version = "1.41.1", features = ["full"]}
+tokio = { version = "1.42.0", features = ["full"]}
 ratatui = { git = "https://github.com/ratatui/ratatui.git", features = [ "unstable-backend-writer" ]}
 async-trait = "0.1.83"
-anyhow = "1.0.93"
+anyhow = "1.0.94"
 rand = "0.8.5"
 crossterm = "0.28.1"
-tracing-subscriber = "0.3.18"
+tracing-subscriber = "0.3.19"
 
 [profile.release]
 debug = true
