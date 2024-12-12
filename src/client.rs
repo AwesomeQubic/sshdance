@@ -44,8 +44,11 @@ use tokio::time::Instant;
 use tokio::time::Interval;
 use tracing::debug;
 use tracing::info;
+use tracing::info_span;
+use tracing::span;
 use tracing::trace;
 use tracing::warn;
+use tracing_futures::Instrument;
 
 pub struct ClientHandler {
     thread: JoinHandle<()>,
@@ -62,14 +65,18 @@ impl Drop for ClientHandler {
 impl ClientHandler {
     pub fn new(ip: Option<std::net::SocketAddr>, page: SshPage) -> ClientHandler {
         let (tx, rx) = mpsc::channel::<ThreadMessage>(100);
+
+        let ip_formatted = ip.map(|x| format!("{x}")).unwrap_or_else(|| "N/A".to_string());
+
+        let span = info_span!("Client Task", ip = ip_formatted);
+
         let task = ClientTask {
             rx,
             term: None,
             main_chanel: None,
-            ip,
             page: page.into(),
-        };
-        let thread = tokio::task::spawn(task.run());
+        }.run().instrument(span);
+        let thread = tokio::task::spawn(task);
 
         ClientHandler { thread, tx }
     }
@@ -210,8 +217,6 @@ enum ThreadMessage {
 struct ClientTask {
     main_chanel: Option<ChannelId>,
 
-    ip: Option<std::net::SocketAddr>,
-
     page: LoadedPage,
 
     rx: Receiver<ThreadMessage>,
@@ -288,8 +293,7 @@ impl ClientTask {
                         },
                         Err(err) => {
                             warn!(
-                                "{:?}: Error {err:?} reading data from task terminating",
-                                self.ip
+                                "Error {err:?} reading data from task terminating",
                             );
                             return;
                         }
@@ -321,8 +325,7 @@ impl ClientTask {
                         },
                         Err(err) => {
                             warn!(
-                                "{:?}: Error {err:?} reading data from task terminating",
-                                self.ip
+                                "Error {err:?} reading data from task terminating",
                             );
                             return;
                         }
@@ -372,7 +375,7 @@ impl ClientTask {
                 backend.execute(cursor::Hide)?;
                 backend.execute(terminal::SetTitle("You are connected to SITE NAME"))?;
 
-                info!("{:?}: Creating term", self.ip);
+                info!("Creating term");
 
                 self.term = Some(Terminal::with_options(
                     backend,
@@ -390,7 +393,7 @@ impl ClientTask {
                 Ok(Code::Render)
             }
             ThreadMessage::Resize(rect) => {
-                info!("{:?}: Resizing term {rect}", self.ip);
+                info!("Resizing term {rect}");
                 self.term
                     .as_mut()
                     .context("No term initialized")?
@@ -404,7 +407,7 @@ impl ClientTask {
     }
 
     async fn render(mut self) -> RenderResult {
-        debug!("{:?}: Redrawing terminal", self.ip);
+        debug!("Redrawing terminal");
 
         let back = tokio::task::spawn_blocking(move || {
             let self_mut = &mut self;
