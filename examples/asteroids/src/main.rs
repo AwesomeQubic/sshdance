@@ -130,7 +130,7 @@ impl Page for Asteroids {
     }
 
     fn get_tps(&self) -> Option<u16> {
-        Some(100)
+        Some(20)
     }
 
     fn tick(&mut self) -> anyhow::Result<Code> {
