@@ -1566,7 +1566,6 @@ checksum = "c0ff37bd590ca25063e35af745c343cb7a0271906fb7b37e4813e8f79f00268d"
 dependencies = [
  "bitflags 2.6.0",
  "libc",
- "redox_syscall 0.5.8",
 ]
 
 [[package]]
@@ -1919,12 +1918,6 @@ checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
 dependencies = [
  "libc",
 ]
-
-[[package]]
-name = "numtoa"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6aa2c4e539b869820a2b82e1aef6ff40aa85e65decdd5185e83fb4b1249cd00f"
 
 [[package]]
 name = "object"
@@ -2402,13 +2395,14 @@ dependencies = [
 [[package]]
 name = "ratatui"
 version = "0.30.0-alpha.0"
-source = "git+https://github.com/ratatui/ratatui.git#dafb716f9d8acb5dda303dc1e155dc90eb54b926"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "646917ffed1f59ad25201003baf411b43b9ea9f783d5f658d76e60ee3177e07f"
 dependencies = [
+ "indoc",
  "instability",
  "itertools",
  "ratatui-core",
  "ratatui-crossterm",
- "ratatui-termion",
  "ratatui-termwiz",
  "ratatui-widgets",
  "strum",
@@ -2419,7 +2413,8 @@ dependencies = [
 [[package]]
 name = "ratatui-core"
 version = "0.1.0-alpha.0"
-source = "git+https://github.com/ratatui/ratatui.git#dafb716f9d8acb5dda303dc1e155dc90eb54b926"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2425e6b9033821bed6d286418dfa5d455f7986726b68ed20212fd985f4c1958"
 dependencies = [
  "bitflags 2.6.0",
  "cassowary",
@@ -2437,7 +2432,8 @@ dependencies = [
 [[package]]
 name = "ratatui-crossterm"
 version = "0.1.0-alpha.0"
-source = "git+https://github.com/ratatui/ratatui.git#dafb716f9d8acb5dda303dc1e155dc90eb54b926"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f66ddacd530502e6f35cad9c72ecc42273a5ed7c9499e5308e3461b3502f54d"
 dependencies = [
  "crossterm",
  "instability",
@@ -2445,19 +2441,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ratatui-termion"
-version = "0.1.0-alpha.0"
-source = "git+https://github.com/ratatui/ratatui.git#dafb716f9d8acb5dda303dc1e155dc90eb54b926"
-dependencies = [
- "instability",
- "ratatui-core",
- "termion",
-]
-
-[[package]]
 name = "ratatui-termwiz"
 version = "0.1.0-alpha.0"
-source = "git+https://github.com/ratatui/ratatui.git#dafb716f9d8acb5dda303dc1e155dc90eb54b926"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13eeec6a11d29b779ac79bbab18d13859a7094977a4a0c7130d7e5f382f0061c"
 dependencies = [
  "ratatui-core",
  "termwiz",
@@ -2466,7 +2453,8 @@ dependencies = [
 [[package]]
 name = "ratatui-widgets"
 version = "0.3.0-alpha.0"
-source = "git+https://github.com/ratatui/ratatui.git#dafb716f9d8acb5dda303dc1e155dc90eb54b926"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9457a5e5f4016f191c572b9a24a326215e0fbfb004c01223bbfd14d298e6496a"
 dependencies = [
  "bitflags 2.6.0",
  "indoc",
@@ -2494,12 +2482,6 @@ checksum = "03a862b389f93e68874fbf580b9de08dd02facb9a788ebadaf4a3fd33cf58834"
 dependencies = [
  "bitflags 2.6.0",
 ]
-
-[[package]]
-name = "redox_termios"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20145670ba436b55d91fc92d25e71160fbfbdd57831631c8d7d36377a476f1cb"
 
 [[package]]
 name = "redox_users"
@@ -3203,18 +3185,6 @@ dependencies = [
  "nom",
  "phf",
  "phf_codegen",
-]
-
-[[package]]
-name = "termion"
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eaa98560e51a2cf4f0bb884d8b2098a9ea11ecf3b7078e9c68242c74cc923a7"
-dependencies = [
- "libc",
- "libredox",
- "numtoa",
- "redox_termios",
 ]
 
 [[package]]

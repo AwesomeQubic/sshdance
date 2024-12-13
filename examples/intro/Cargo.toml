@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 sshdance = { path = "../../" }
 tokio = { version = "1.42.0", features = ["full"]}
-ratatui = { git = "https://github.com/ratatui/ratatui.git", features = [ "unstable-backend-writer" ]}
+ratatui = { version = "=0.30.0-alpha.0", features = [ "unstable-backend-writer" ]}
 async-trait = "0.1.83"
 anyhow = "1.0.94"
 rand = "0.8.5"
