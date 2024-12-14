@@ -251,12 +251,6 @@ impl From<SshPage> for LoadedPage {
     }
 }
 
-impl Drop for ClientTask {
-    fn drop(&mut self) {
-        debug!("Droping client task");
-    }
-}
-
 impl ClientTask {
     async fn run(mut self) {
         loop {
@@ -336,9 +330,7 @@ impl ClientTask {
     }
 
     async fn slingshot(mut self) -> Self {
-        replace_with_or_abort(&mut self.page, |old| {
-            old.page.slingshot().into()
-        });
+        self.page = self.page.page.slingshot().await.into();
 
         let rendered = self.render().await;
         if rendered.results.is_err() {
