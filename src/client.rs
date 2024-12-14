@@ -330,7 +330,7 @@ impl ClientTask {
     }
 
     async fn slingshot(mut self) -> Self {
-        self.page = self.page.page.slingshot().await.into();
+        self.page = self.page.page.slingshot().into();
 
         let rendered = self.render().await;
         if rendered.results.is_err() {

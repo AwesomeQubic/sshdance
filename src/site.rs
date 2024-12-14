@@ -15,7 +15,7 @@ pub trait Page: Sync + Send {
         Ok(Code::SkipRenderer)
     }
 
-    async fn slingshot(self: Box<Self>) -> SshPage {
+    fn slingshot(self: Box<Self>) -> SshPage {
         unimplemented!("you did not implement page switching")
     }
 
