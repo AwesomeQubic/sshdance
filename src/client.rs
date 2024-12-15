@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::future::pending;
 use std::io::Write;
 use std::mem::replace;
@@ -53,6 +54,7 @@ use tracing_futures::Instrument;
 pub struct ClientHandler {
     thread: JoinHandle<()>,
     tx: Sender<ThreadMessage>,
+    window_title: Option<&'static str>,
 }
 
 impl Drop for ClientHandler {
@@ -63,7 +65,7 @@ impl Drop for ClientHandler {
 }
 
 impl ClientHandler {
-    pub fn new(ip: Option<std::net::SocketAddr>, page: SshPage) -> ClientHandler {
+    pub fn new(ip: Option<std::net::SocketAddr>, page: SshPage, window_title: Option<&'static str>) -> ClientHandler {
         let (tx, rx) = mpsc::channel::<ThreadMessage>(100);
 
         let ip_formatted = ip.map(|x| format!("{x}")).unwrap_or_else(|| "N/A".to_string());
@@ -78,7 +80,7 @@ impl ClientHandler {
         }.run().instrument(span);
         let thread = tokio::task::spawn(task);
 
-        ClientHandler { thread, tx }
+        ClientHandler { thread, tx, window_title }
     }
 }
 
@@ -100,7 +102,14 @@ impl Handler for ClientHandler {
 
         let terminal_handle = TerminalHandle::new(session.handle(), channel.id());
 
-        let backend = CrosstermBackend::new(terminal_handle);
+        let mut backend = CrosstermBackend::new(terminal_handle);
+
+        backend.execute(EnterAlternateScreen)?;
+        backend.execute(cursor::Hide)?;
+
+        if let Some(title) = self.window_title {
+            backend.execute(terminal::SetTitle(title))?;
+        }
 
         self.tx
             .try_send(ThreadMessage::NewTerm(backend, channel.id()))?;
@@ -362,11 +371,6 @@ impl ClientTask {
     async fn handle_input(&mut self, message: ThreadMessage) -> Result<Code> {
         match message {
             ThreadMessage::NewTerm(mut backend, id) => {
-                backend.execute(EnterAlternateScreen)?;
-                //backend.execute(EnableMouseCapture)?;
-                backend.execute(cursor::Hide)?;
-                backend.execute(terminal::SetTitle("You are connected to SITE NAME"))?;
-
                 info!("Creating term");
 
                 self.term = Some(Terminal::with_options(

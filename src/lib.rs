@@ -17,6 +17,9 @@ pub mod util;
 pub struct SshDanceBuilder {
     socket: SocketAddr,
     key_pair: Vec<KeyPair>,
+
+    window_title: Option<&'static str>,
+
     initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
 }
 
@@ -29,7 +32,13 @@ impl SshDanceBuilder {
             socket,
             key_pair: vec![KeyPair::generate_ed25519()],
             initial_site,
+            window_title: None,
         }
+    }
+
+    pub fn set_window_title(mut self, title: &'static str) -> Self{
+        self.window_title = Some(title);
+        self
     }
 
     pub fn set_keys(mut self, key_pair: Vec<KeyPair>) -> Self {
@@ -49,6 +58,7 @@ impl SshDanceBuilder {
 
         let mut server = SshSiteServer {
             initial_site: self.initial_site,
+            window_title: self.window_title,
         };
         server.run(config, self.socket).await
     }
@@ -56,6 +66,7 @@ impl SshDanceBuilder {
 
 pub struct SshSiteServer {
     initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
+    window_title: Option<&'static str>
 }
 
 impl SshSiteServer {
@@ -70,6 +81,6 @@ impl Server for SshSiteServer {
 
     fn new_client(&mut self, addr: Option<std::net::SocketAddr>) -> Self::Handler {
         info!("New client connected {addr:?}");
-        ClientHandler::new(addr, (self.initial_site)(addr))
+        ClientHandler::new(addr, (self.initial_site)(addr), self.window_title.clone())
     }
 }
