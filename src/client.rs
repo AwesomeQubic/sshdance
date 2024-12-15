@@ -422,8 +422,8 @@ impl ClientTask {
 
             let processed = match out {
                 std::result::Result::Ok(std::result::Result::Ok(_)) => anyhow::Ok(()),
-                std::result::Result::Ok(std::result::Result::Err(_)) => {
-                    anyhow::Result::Err(Error::msg("Error in rendering"))
+                std::result::Result::Ok(std::result::Result::Err(e)) => {
+                    anyhow::Result::Err(Error::from(e))
                 }
                 Err(_) => anyhow::Result::Err(Error::msg("Renderer panicked")),
             };
