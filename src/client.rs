@@ -274,8 +274,8 @@ impl ClientTask {
                             Code::Render => {
                                 let rendered = self.render().await;
                                 self = rendered.ownership;
-                                if rendered.results.is_err() {
-                                    warn!("Encountered error doing rendering");
+                                if let Err(error) = rendered.results {
+                                    warn!("Encountered error doing rendering {error}");
                                 }
                             }
                             Code::Terminate => {
@@ -306,8 +306,8 @@ impl ClientTask {
                             Code::Render => {
                                 let rendered = self.render().await;
                                 self = rendered.ownership;
-                                if rendered.results.is_err() {
-                                    warn!("Encountered error doing rendering");
+                                if let Err(error) = rendered.results {
+                                    warn!("Encountered error doing rendering {error}");
                                 }
                             }
                             Code::Terminate => {
@@ -333,8 +333,8 @@ impl ClientTask {
         self.page = self.page.page.slingshot().into();
 
         let rendered = self.render().await;
-        if rendered.results.is_err() {
-            warn!("Encountered error doing rendering");
+        if let Err(error) = rendered.results {
+            warn!("Encountered error doing rendering {error}");
         }
 
         rendered.ownership
