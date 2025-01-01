@@ -29,3 +29,47 @@ Well here is a list of my current TODOs:
  - Nix templates so we do not have to bother people with getting this lib to work
  - Better input handling
  - Make this more formal
+
+## Example
+
+```rust
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use anyhow::Ok;
+use async_trait::async_trait;
+use ratatui::{
+    layout::Rect,
+    widgets::Paragraph,
+    Frame,
+};
+use sshdance::{
+    site::{Code, Page, SshInput, SshPage},
+    SshDanceBuilder,
+};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2222);
+    SshDanceBuilder::new(socket, |_| HelloWorld::new())
+        .run()
+        .await
+}
+
+pub struct HelloWorld;
+
+impl HelloWorld {
+    pub fn new() -> SshPage {
+        Box::new(HelloWorld) as SshPage
+    }
+}
+
+#[async_trait]
+impl Page for HelloWorld {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect) {
+        frame.render_widget(Paragraph::new("Hello world"), area);
+    }
+
+    async fn handle_input(&mut self, _input: SshInput) -> anyhow::Result<Code> {
+        Ok(Code::Render)
+    }
+}
+```

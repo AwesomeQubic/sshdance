@@ -11,6 +11,8 @@ name = "sshdance"
 version = "0.2.0"
 edition = "2021"
 license = "MPL-2.0"
+description = "A simple SSH TUI-application framework"
+homepage = "ssh://qubicfluff.pl"
 
 [dependencies]
 anyhow = "1.0.94"
