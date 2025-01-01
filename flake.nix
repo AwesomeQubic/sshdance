@@ -24,6 +24,7 @@
             pkg-config
             cargo-flamegraph
             cargo-edit
+            cargo-expand
           ];
         };
     }) // {

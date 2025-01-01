@@ -3,6 +3,7 @@
 members = [
     "examples/intro",
     "examples/asteroids",
+    "examples/panic",
 ]
 
 [package]

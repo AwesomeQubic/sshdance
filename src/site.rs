@@ -49,3 +49,17 @@ pub enum EscapeCode {
     Left,
     CtrlC,
 }
+
+
+pub struct DummyPage;
+
+#[async_trait]
+impl Page for DummyPage {
+    async fn handle_input(&mut self, input: SshInput) -> anyhow::Result<Code> {
+        Ok(Code::SkipRenderer)
+    }
+
+    fn render(&mut self, frame: &mut Frame<'_>, rect: Rect) {
+        
+    }
+}

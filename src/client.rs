@@ -9,6 +9,7 @@ use std::pin::pin;
 use crate::handle::SshTerminal;
 use crate::handle::TerminalHandle;
 use crate::site::Code;
+use crate::site::DummyPage;
 use crate::site::EscapeCode;
 use crate::site::SshInput;
 use crate::site::SshPage;
@@ -44,9 +45,9 @@ use tokio::time::Duration;
 use tokio::time::Instant;
 use tokio::time::Interval;
 use tracing::debug;
+use tracing::error;
 use tracing::info;
 use tracing::info_span;
-use tracing::span;
 use tracing::trace;
 use tracing::warn;
 use tracing_futures::Instrument;
@@ -266,87 +267,70 @@ impl ClientTask {
             let rx_future = self.rx.recv();
             let anim_future = self.page.animation_interval();
 
-            tokio::select! {
+            let code = tokio::select! {
                 message = rx_future => {
                     let Some(event) = message else {
                         return;
                     };
 
-                    match self.handle_input(event).await {
-                        anyhow::Result::Ok(x) => match x {
-                            Code::ChangeTo => {
-                                self = self.slingshot().await;
-                            }
-                            Code::SkipRenderer => {
-                                continue;
-                            }
-                            Code::Render => {
-                                let rendered = self.render().await;
-                                self = rendered.ownership;
-                                if let Err(error) = rendered.results {
-                                    warn!("Encountered error doing rendering {error}");
-                                }
-                            }
-                            Code::Terminate => {
-                                if let Err(error) = self.terminate().await {
-                                    warn!("Encountered error {error} while terminating connection")
-                                };
-                                return;
-                            }
-                        },
-                        Err(err) => {
-                            warn!(
-                                "Error {err:?} reading data from task terminating",
-                            );
-                            return;
-                        }
-                    }
+                    self.handle_input(event).await
                 },
                 _anim = anim_future => {
-                    let code = self.page.page.tick();
-                    match code {
-                        anyhow::Result::Ok(x) => match x {
-                            Code::ChangeTo => {
-                                self = self.slingshot().await;
-                            }
-                            Code::SkipRenderer => {
-                                continue;
-                            }
-                            Code::Render => {
-                                let rendered = self.render().await;
-                                self = rendered.ownership;
-                                if let Err(error) = rendered.results {
-                                    warn!("Encountered error doing rendering {error}");
-                                }
-                            }
-                            Code::Terminate => {
-                                if let Err(error) = self.terminate().await {
-                                    warn!("Encountered error {error} while terminating connection")
-                                };
+                    self.page.page.tick()
+                }
+            };
+
+            match code {
+                anyhow::Result::Ok(x) => match x {
+                    Code::ChangeTo => {
+                        self.page = self.page.page.slingshot().into();
+                        
+                        let rendered = self.render().await;
+                        self = rendered.ownership;
+                        match rendered.results {
+                            std::result::Result::Ok(_) => {}, 
+                            std::result::Result::Err(RenderError::Panicked) => {
+                                let _ = self.terminate().await;
                                 return;
                             }
-                        },
-                        Err(err) => {
-                            warn!(
-                                "Error {err:?} reading data from task terminating",
-                            );
-                            return;
+                            std::result::Result::Err(RenderError::InternalError(e)) => {
+                                warn!("Encountered error doing rendering {e}");
+                            }
+                        }
+
+                    }
+                    Code::SkipRenderer => {
+                        continue;
+                    }
+                    Code::Render => {
+                        let rendered = self.render().await;
+                        self = rendered.ownership;
+                        match rendered.results {
+                            std::result::Result::Ok(_) => {}, 
+                            std::result::Result::Err(RenderError::Panicked) => {
+                                let _ = self.terminate().await;
+                                return;
+                            }
+                            std::result::Result::Err(RenderError::InternalError(e)) => {
+                                warn!("Encountered error doing rendering {e}");
+                            }
                         }
                     }
+                    Code::Terminate => {
+                        if let Err(error) = self.terminate().await {
+                            warn!("Encountered error {error} while terminating connection")
+                        };
+                        return;
+                    }
+                },
+                Err(err) => {
+                    warn!(
+                        "Error {err:?} reading data from task terminating",
+                    );
+                    return;
                 }
             }
         }
-    }
-
-    async fn slingshot(mut self) -> Self {
-        self.page = self.page.page.slingshot().into();
-
-        let rendered = self.render().await;
-        if let Err(error) = rendered.results {
-            warn!("Encountered error doing rendering {error}");
-        }
-
-        rendered.ownership
     }
 
     async fn terminate(mut self) -> Result<()> {
@@ -370,7 +354,7 @@ impl ClientTask {
 
     async fn handle_input(&mut self, message: ThreadMessage) -> Result<Code> {
         match message {
-            ThreadMessage::NewTerm(mut backend, id) => {
+            ThreadMessage::NewTerm(backend, id) => {
                 info!("Creating term");
 
                 self.term = Some(Terminal::with_options(
@@ -405,40 +389,44 @@ impl ClientTask {
     async fn render(mut self) -> RenderResult {
         debug!("Redrawing terminal");
 
-        let back = tokio::task::spawn_blocking(move || {
+        let back: RenderResult = tokio::task::spawn_blocking(move || {
             let self_mut = &mut self;
             //TODO prove unwind safety of renderer and term
-            let out = panic::catch_unwind(AssertUnwindSafe(|| {
-                let Some(term) = self_mut.term.as_mut() else {
-                    return Result::Err(anyhow::Error::msg("Terminal does not exist"));
-                };
-                let renderer = &mut *self_mut.page.page;
 
-                let draw = term
-                    .draw(|frame| {
+            let Some(term) = self_mut.term.as_mut() else {
+                unreachable!("You can not call render on non exist page");
+            };
+
+            let renderer = &mut *self_mut.page.page;
+
+            let out = panic::catch_unwind(AssertUnwindSafe(|| {
+                term
+                    .draw(move |frame| {
                         let area = frame.area();
                         renderer.render(frame, area);
                     })
-                    .map(|_| ());
-
-                Result::Ok(())
             }));
 
             let processed = match out {
-                std::result::Result::Ok(std::result::Result::Ok(_)) => anyhow::Ok(()),
-                std::result::Result::Ok(std::result::Result::Err(e)) => {
-                    anyhow::Result::Err(Error::from(e))
+                std::result::Result::Ok(std::io::Result::Ok(_)) => std::result::Result::Ok(()),
+                std::result::Result::Ok(std::io::Result::Err(e)) => {
+                    std::result::Result::Err(RenderError::InternalError(e))
                 }
-                Err(_) => anyhow::Result::Err(Error::msg("Renderer panicked")),
+                Err(_) => {
+                    if let Some(backend) = self_mut.term.as_mut() {
+                        backend.backend_mut().writer_mut().post_panic();
+                    }
+                    self_mut.page = LoadedPage::from(Box::new(DummyPage) as SshPage);
+                    error!("SSH website panicked");
+                    std::result::Result::Err(RenderError::Panicked)
+                },
             };
 
             RenderResult {
                 ownership: self,
                 results: processed,
             }
-        })
-        .await
-        .unwrap(); //Unwrap is safe since all possibilities of a panic are checked
+        }).await.unwrap(); //Unwrap is safe since all possibilities of a panic are checked
 
         back
     }
@@ -446,5 +434,10 @@ impl ClientTask {
 
 struct RenderResult {
     ownership: ClientTask,
-    results: Result<()>,
+    results: std::result::Result<(), RenderError>,
+}
+
+enum RenderError {
+    Panicked,
+    InternalError(std::io::Error),
 }

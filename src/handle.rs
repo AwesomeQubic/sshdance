@@ -79,6 +79,10 @@ impl TerminalHandle {
 
         anyhow::Ok(())
     }
+
+    pub fn post_panic(&mut self) {
+        self.sink = CryptoVec::new();
+    }
 }
 
 // The crossterm backend writes to the terminal handle.
