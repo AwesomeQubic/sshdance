@@ -6,6 +6,11 @@ I do not like being overly formal so if you want to see an example of it working
 
 Have fun and may meme driven development be with you
 
+## Security
+This is less secure than correctly setup HTTPs. There are no protections against potential MITM-attacks on first connections, depending on client configuration, public keys are typically stored to compare with the key served from the server. This also means there are no proper means to rotate keys without it looking like a MITM-attack.
+
+**Use at your own risk!**
+
 ## I have no attention span and want to get this working NOW
 
 Great get yourself some `nix` and run `nix flake init --template github:AwesomeQubic/sshdance/qubic-experimental`.<br>
