@@ -2,23 +2,26 @@
 
 members = [
     "examples/intro",
+    "examples/asteroids",
+    "examples/panic",
 ]
 
 [package]
 name = "sshdance"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MPL-2.0"
 
 [dependencies]
-anyhow = "1.0.93"
+anyhow = "1.0.94"
 async-trait = "0.1.83"
-futures = "0.3.31"
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 russh = "0.46.0"
 russh-keys = "0.46.0"
 # too tired to enumare all features :3
-tokio = { version = "1.41.1", features = ["full"]}
-ratatui = { git = "https://github.com/ratatui/ratatui.git", features = [ "unstable-backend-writer" ]}
-tracing = "0.1.40"
+tokio = { version = "1.42.0", features = ["full"]}
+ratatui = { version = "=0.30.0-alpha.0", features = [ "unstable-backend-writer" ]}
+tracing = "0.1.41"
 ed25519-dalek = "2.1.1"
+replace_with = "0.1.7"
+tracing-futures = { version = "0.2.5", features = [ "tokio" ] }

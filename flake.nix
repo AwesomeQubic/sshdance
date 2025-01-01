@@ -16,7 +16,7 @@
           # Additional dev-shell environment variables can be set directly
           # MY_CUSTOM_DEVELOPMENT_VAR = "something else";
 
-          RUST_LOG="sshdance=trace";
+          RUST_LOG="sshdance=trace,info";
 
           # Extra inputs can be added here; cargo and rustc are provided by default.
           packages = with pkgs; [
@@ -24,7 +24,15 @@
             pkg-config
             cargo-flamegraph
             cargo-edit
+            cargo-expand
           ];
         };
-    });
+    }) // {
+        templates = {
+          default = {
+            path = ./template;
+            description = "A ssh dance template";
+          };
+        };
+      };
 }

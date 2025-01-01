@@ -24,7 +24,7 @@ enum WriteMessage {
     Write(CryptoVec),
 }
 
-impl Drop for  TerminalHandle {
+impl Drop for TerminalHandle {
     fn drop(&mut self) {
         if let Some(handle) = self.handle.as_mut() {
             warn!("Ungracefully shuting down connection");
@@ -68,14 +68,20 @@ impl TerminalHandle {
         }
     }
 
-    pub async fn close(&mut self) -> anyhow::Result<()>{
+    pub async fn close(&mut self) -> anyhow::Result<()> {
         self.tx.send(WriteMessage::Close)?;
 
         let mut handle_option = replace(&mut self.handle, None);
-        let handle = handle_option.as_mut().with_context(|| "Closing a already closed connection")?;
+        let handle = handle_option
+            .as_mut()
+            .with_context(|| "Closing a already closed connection")?;
         handle.await?;
 
         anyhow::Ok(())
+    }
+
+    pub fn post_panic(&mut self) {
+        self.sink = CryptoVec::new();
     }
 }
 
@@ -89,7 +95,7 @@ impl std::io::Write for TerminalHandle {
     fn flush(&mut self) -> std::io::Result<()> {
         let old_vec = replace(&mut self.sink, CryptoVec::new());
         if let Err(_) = self.tx.send(WriteMessage::Write(old_vec)) {
-            warn!("Error sending message to task but rusts stupidly does not let us represent that so idk have fun");
+            return std::io::Result::Err(std::io::ErrorKind::BrokenPipe.into());
         };
         Ok(())
     }
