@@ -64,7 +64,7 @@ impl SshDanceBuilder {
     }
 }
 
-pub struct SshSiteServer {
+pub(crate) struct SshSiteServer {
     initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
     window_title: Option<&'static str>
 }
