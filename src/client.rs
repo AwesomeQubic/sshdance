@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt::Display;
 use std::future::pending;
 use std::io::Write;
 use std::mem::replace;
@@ -224,6 +225,16 @@ enum ThreadMessage {
     NewTerm(CrosstermBackend<TerminalHandle>, ChannelId),
 }
 
+impl Display for ThreadMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ThreadMessage::Resize(rect) => write!(f, "Resize"),
+            ThreadMessage::Input(ssh_input) => write!(f, "Input"),
+            ThreadMessage::NewTerm(crossterm_backend, channel_id) =>  write!(f, "New terminal"),
+        }
+    }
+}
+
 struct ClientTask {
     main_chanel: Option<ChannelId>,
 
@@ -264,19 +275,27 @@ impl From<SshPage> for LoadedPage {
 impl ClientTask {
     async fn run(mut self) {
         loop {
-            let rx_future = self.rx.recv();
-            let anim_future = self.page.animation_interval();
 
-            let code = tokio::select! {
-                message = rx_future => {
-                    let Some(event) = message else {
-                        return;
-                    };
+            let code = if self.term.is_none() {
+                let Some(event) = self.rx.recv().await else {
+                    return;
+                };
 
-                    self.handle_input(event).await
-                },
-                _anim = anim_future => {
-                    self.page.page.tick()
+                self.handle_input(event).await
+            } else {
+                let rx_future = self.rx.recv();
+                let anim_future = self.page.animation_interval();
+                tokio::select! {
+                    message = rx_future => {
+                        let Some(event) = message else {
+                            return;
+                        };
+    
+                        self.handle_input(event).await
+                    },
+                    _anim = anim_future => {
+                        self.page.page.tick()
+                    }
                 }
             };
 
@@ -343,16 +362,12 @@ impl ClientTask {
             //backend.execute(DisableMouseCapture)?;
             backend.execute(cursor::Show)?;
             backend.execute(LeaveAlternateScreen)?;
-
-            let writer = backend.writer_mut();
-
-            writer.flush()?;
-            writer.close().await?;
         }
         Ok(())
     }
 
     async fn handle_input(&mut self, message: ThreadMessage) -> Result<Code> {
+        trace!("Handing input {message}");
         match message {
             ThreadMessage::NewTerm(backend, id) => {
                 info!("Creating term");
@@ -387,8 +402,7 @@ impl ClientTask {
     }
 
     async fn render(mut self) -> RenderResult {
-        debug!("Redrawing terminal");
-
+        trace!("Redrawing terminal");
         let back: RenderResult = tokio::task::spawn_blocking(move || {
             let self_mut = &mut self;
             //TODO prove unwind safety of renderer and term

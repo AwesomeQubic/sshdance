@@ -20,7 +20,7 @@ crossterm = { version = "0.28.1", features = ["event-stream"] }
 russh = "0.46.0"
 russh-keys = "0.46.0"
 # too tired to enumare all features :3
-tokio = { version = "1.42.0", features = ["full"]}
+tokio = { version = "1.42.0", features = [ "rt", "net", "sync" ]}
 ratatui = { version = "=0.30.0-alpha.0", features = [ "unstable-backend-writer" ]}
 tracing = "0.1.41"
 ed25519-dalek = "2.1.1"

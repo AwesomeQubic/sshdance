@@ -26,10 +26,10 @@ enum WriteMessage {
 
 impl Drop for TerminalHandle {
     fn drop(&mut self) {
-        if let Some(handle) = self.handle.as_mut() {
-            warn!("Ungracefully shuting down connection");
-            handle.abort();
-        }
+        //Try flushing one last time
+        let _ = self.flush();
+        //Close thread
+        self.tx.send(WriteMessage::Close).expect("Thread can not be closed yet");
     }
 }
 
@@ -66,18 +66,6 @@ impl TerminalHandle {
             tx,
             handle: Some(handle),
         }
-    }
-
-    pub async fn close(&mut self) -> anyhow::Result<()> {
-        self.tx.send(WriteMessage::Close)?;
-
-        let mut handle_option = replace(&mut self.handle, None);
-        let handle = handle_option
-            .as_mut()
-            .with_context(|| "Closing a already closed connection")?;
-        handle.await?;
-
-        anyhow::Ok(())
     }
 
     pub fn post_panic(&mut self) {
