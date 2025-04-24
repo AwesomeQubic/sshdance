@@ -25,6 +25,7 @@
             cargo-flamegraph
             cargo-edit
             cargo-expand
+            cargo-audit
           ];
         };
     }) // {
