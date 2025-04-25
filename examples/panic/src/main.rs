@@ -28,9 +28,7 @@ const COLOGS: [Color; 4] = [Color::Green, Color::Red, Color::Magenta, Color::Cya
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2222);
-    SshDanceBuilder::new(socket, |_| Panic::new())
-        .run()
-        .await
+    SshDanceBuilder::new(socket, |_| Panic::new()).run().await
 }
 
 pub struct Panic;

@@ -5,12 +5,12 @@ edition = "2021"
 
 [dependencies]
 sshdance = { path = "../../" }
-tokio = { version = "1.42.0", features = ["full"]}
+tokio = { version = "1.44.2", features = ["full"]}
 ratatui = { version = "=0.30.0-alpha.0", features = [ "unstable-backend-writer" ]}
-async-trait = "0.1.83"
-anyhow = "1.0.94"
-rand = "0.8.5"
-crossterm = "0.28.1"
+async-trait = "0.1.88"
+anyhow = "1.0.98"
+rand = "0.9.1"
+crossterm = "0.29.0"
 tracing-subscriber = "0.3.19"
 tracing = "0.1.41"
 console-subscriber = "0.4.1"

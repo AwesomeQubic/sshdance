@@ -67,10 +67,16 @@ impl Drop for ClientHandler {
 }
 
 impl ClientHandler {
-    pub fn new(ip: Option<std::net::SocketAddr>, page: SshPage, window_title: Option<&'static str>) -> ClientHandler {
+    pub fn new(
+        ip: Option<std::net::SocketAddr>,
+        page: SshPage,
+        window_title: Option<&'static str>,
+    ) -> ClientHandler {
         let (tx, rx) = mpsc::channel::<ThreadMessage>(100);
 
-        let ip_formatted = ip.map(|x| format!("{x}")).unwrap_or_else(|| "N/A".to_string());
+        let ip_formatted = ip
+            .map(|x| format!("{x}"))
+            .unwrap_or_else(|| "N/A".to_string());
 
         let span = info_span!("Client Task", ip = ip_formatted);
 
@@ -79,14 +85,19 @@ impl ClientHandler {
             term: None,
             main_chanel: None,
             page: page.into(),
-        }.run().instrument(span);
+        }
+        .run()
+        .instrument(span);
         let thread = tokio::task::spawn(task);
 
-        ClientHandler { thread, tx, window_title }
+        ClientHandler {
+            thread,
+            tx,
+            window_title,
+        }
     }
 }
 
-#[async_trait]
 impl Handler for ClientHandler {
     type Error = anyhow::Error;
 
@@ -230,7 +241,7 @@ impl Display for ThreadMessage {
         match self {
             ThreadMessage::Resize(rect) => write!(f, "Resize"),
             ThreadMessage::Input(ssh_input) => write!(f, "Input"),
-            ThreadMessage::NewTerm(crossterm_backend, channel_id) =>  write!(f, "New terminal"),
+            ThreadMessage::NewTerm(crossterm_backend, channel_id) => write!(f, "New terminal"),
         }
     }
 }
@@ -275,7 +286,6 @@ impl From<SshPage> for LoadedPage {
 impl ClientTask {
     async fn run(mut self) {
         loop {
-
             let code = if self.term.is_none() {
                 let Some(event) = self.rx.recv().await else {
                     return;
@@ -290,7 +300,7 @@ impl ClientTask {
                         let Some(event) = message else {
                             return;
                         };
-    
+
                         self.handle_input(event).await
                     },
                     _anim = anim_future => {
@@ -303,11 +313,11 @@ impl ClientTask {
                 anyhow::Result::Ok(x) => match x {
                     Code::ChangeTo => {
                         self.page = self.page.page.slingshot().into();
-                        
+
                         let rendered = self.render().await;
                         self = rendered.ownership;
                         match rendered.results {
-                            std::result::Result::Ok(_) => {}, 
+                            std::result::Result::Ok(_) => {}
                             std::result::Result::Err(RenderError::Panicked) => {
                                 let _ = self.terminate().await;
                                 return;
@@ -316,7 +326,6 @@ impl ClientTask {
                                 warn!("Encountered error doing rendering {e}");
                             }
                         }
-
                     }
                     Code::SkipRenderer => {
                         continue;
@@ -325,7 +334,7 @@ impl ClientTask {
                         let rendered = self.render().await;
                         self = rendered.ownership;
                         match rendered.results {
-                            std::result::Result::Ok(_) => {}, 
+                            std::result::Result::Ok(_) => {}
                             std::result::Result::Err(RenderError::Panicked) => {
                                 let _ = self.terminate().await;
                                 return;
@@ -343,9 +352,7 @@ impl ClientTask {
                     }
                 },
                 Err(err) => {
-                    warn!(
-                        "Error {err:?} reading data from task terminating",
-                    );
+                    warn!("Error {err:?} reading data from task terminating",);
                     return;
                 }
             }
@@ -414,11 +421,10 @@ impl ClientTask {
             let renderer = &mut *self_mut.page.page;
 
             let out = panic::catch_unwind(AssertUnwindSafe(|| {
-                term
-                    .draw(move |frame| {
-                        let area = frame.area();
-                        renderer.render(frame, area);
-                    })
+                term.draw(move |frame| {
+                    let area = frame.area();
+                    renderer.render(frame, area);
+                })
             }));
 
             let processed = match out {
@@ -433,14 +439,16 @@ impl ClientTask {
                     self_mut.page = LoadedPage::from(Box::new(DummyPage) as SshPage);
                     error!("SSH website panicked");
                     std::result::Result::Err(RenderError::Panicked)
-                },
+                }
             };
 
             RenderResult {
                 ownership: self,
                 results: processed,
             }
-        }).await.unwrap(); //Unwrap is safe since all possibilities of a panic are checked
+        })
+        .await
+        .unwrap(); //Unwrap is safe since all possibilities of a panic are checked
 
         back
     }

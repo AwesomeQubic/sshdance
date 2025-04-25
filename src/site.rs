@@ -50,7 +50,6 @@ pub enum EscapeCode {
     CtrlC,
 }
 
-
 pub struct DummyPage;
 
 #[async_trait]
@@ -59,7 +58,5 @@ impl Page for DummyPage {
         Ok(Code::SkipRenderer)
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, rect: Rect) {
-        
-    }
+    fn render(&mut self, frame: &mut Frame<'_>, rect: Rect) {}
 }

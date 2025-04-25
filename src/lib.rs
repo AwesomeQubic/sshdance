@@ -2,10 +2,10 @@ use std::{net::SocketAddr, sync::Arc};
 
 use client::ClientHandler;
 use russh::{
+    keys::PrivateKey,
     server::{Config, Server},
-    MethodSet,
+    MethodKind, MethodSet,
 };
-use russh_keys::key::KeyPair;
 use site::SshPage;
 use tracing::info;
 
@@ -16,7 +16,7 @@ pub mod util;
 
 pub struct SshDanceBuilder {
     socket: SocketAddr,
-    key_pair: Vec<KeyPair>,
+    key_pair: Vec<PrivateKey>,
 
     window_title: Option<&'static str>,
 
@@ -30,18 +30,22 @@ impl SshDanceBuilder {
     ) -> SshDanceBuilder {
         SshDanceBuilder {
             socket,
-            key_pair: vec![KeyPair::generate_ed25519()],
+            key_pair: vec![PrivateKey::random(
+                &mut rand_core::OsRng,
+                russh::keys::Algorithm::Ed25519,
+            )
+            .unwrap()],
             initial_site,
             window_title: None,
         }
     }
 
-    pub fn set_window_title(mut self, title: &'static str) -> Self{
+    pub fn set_window_title(mut self, title: &'static str) -> Self {
         self.window_title = Some(title);
         self
     }
 
-    pub fn set_keys(mut self, key_pair: Vec<KeyPair>) -> Self {
+    pub fn set_keys(mut self, key_pair: Vec<PrivateKey>) -> Self {
         self.key_pair = key_pair;
         self
     }
@@ -51,7 +55,11 @@ impl SshDanceBuilder {
             inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
             auth_rejection_time: std::time::Duration::from_secs(3),
             auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
-            methods: MethodSet::NONE,
+            methods: {
+                let mut set = MethodSet::empty();
+                set.push(MethodKind::None);
+                set
+            },
             keys: self.key_pair,
             ..Default::default()
         };
@@ -66,7 +74,7 @@ impl SshDanceBuilder {
 
 pub(crate) struct SshSiteServer {
     initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
-    window_title: Option<&'static str>
+    window_title: Option<&'static str>,
 }
 
 impl SshSiteServer {

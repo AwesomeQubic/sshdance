@@ -1,28 +1,21 @@
 use std::path::Path;
 
 use anyhow::Result;
-use ed25519_dalek::SigningKey;
-use russh_keys::key::KeyPair;
+use russh::{keys::PrivateKey, Error};
 use tracing::info;
 
-pub async fn get_or_create(path: impl AsRef<Path>) -> Result<KeyPair> {
+pub async fn get_or_create(path: impl AsRef<Path>) -> Result<PrivateKey> {
     info!("Loading keypair");
+    let path: &Path = path.as_ref();
 
-    match tokio::fs::read(&path).await {
-        Ok(key) => {
-            let parsed = SigningKey::from_bytes(&key.try_into().expect("Invalid file"));
-
-            Ok(KeyPair::Ed25519(parsed))
-        }
+    match PrivateKey::read_openssh_file(path) {
+        Ok(key) => Ok(key),
         Err(err) => {
             info!("Encountered an error loading keypair {err} recreating it");
-            let key = KeyPair::generate_ed25519();
+            let key = PrivateKey::random(&mut rand_core::OsRng, russh::keys::Algorithm::Ed25519)
+                .expect("Unable to create the key");
 
-            let KeyPair::Ed25519(ref inner) = key else {
-                unreachable!()
-            };
-
-            tokio::fs::write(&path, inner.to_bytes()).await?;
+            key.write_openssh_file(path, russh::keys::ssh_key::LineEnding::default());
 
             Ok(key)
         }

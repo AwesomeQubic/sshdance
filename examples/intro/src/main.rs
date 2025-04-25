@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use anyhow::Ok;
 use async_trait::async_trait;
-use rand::seq::SliceRandom;
+use rand::prelude::IndexedRandom;
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style, Stylize},
@@ -118,7 +118,7 @@ impl Page for IntroPage {
             self.text.remove(0);
         }
         self.text.push(Line::styled(
-            *BOOT_SPLASH.choose(&mut rand::thread_rng()).unwrap(),
+            *BOOT_SPLASH.choose(&mut rand::rng()).unwrap(),
             Style::new().fg(Color::DarkGray),
         ));
         Ok(Code::Render)

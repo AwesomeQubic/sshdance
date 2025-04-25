@@ -29,7 +29,9 @@ impl Drop for TerminalHandle {
         //Try flushing one last time
         let _ = self.flush();
         //Close thread
-        self.tx.send(WriteMessage::Close).expect("Thread can not be closed yet");
+        self.tx
+            .send(WriteMessage::Close)
+            .expect("Thread can not be closed yet");
     }
 }
 
