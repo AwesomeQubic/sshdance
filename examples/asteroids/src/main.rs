@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Ok;
 use async_trait::async_trait;
-use rand::{seq::SliceRandom, Rng};
+use rand::{seq::{IndexedRandom, SliceRandom}, Rng};
 use ratatui::{
     layout::{Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
@@ -122,10 +122,7 @@ impl Asteroids {
 #[async_trait]
 impl Page for Asteroids {
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        if self.viewpoint_data == None {
-            self.update_rect(area);
-        }
-
+        self.update_rect(area);
         self.render_background(frame, area);
     }
 
@@ -134,7 +131,7 @@ impl Page for Asteroids {
     }
 
     fn tick(&mut self) -> anyhow::Result<Code> {
-        let mut rand = rand::thread_rng();
+        let mut rand = rand::rng();
 
         if let Some((area, _)) = self.viewpoint_data {
             match self.spawn.checked_sub(1) {
@@ -142,9 +139,9 @@ impl Page for Asteroids {
                     self.spawn = a;
                 }
                 None => {
-                    let start = (rand.gen_range(area.x..area.x + area.width), area.bottom());
+                    let start = (rand.random_range(area.x..area.x + area.width), area.bottom());
                     self.asteroids.push(Asteroid {
-                        velocity: (rand.gen_range(-10..10), rand.gen_range(-10..0)),
+                        velocity: (rand.random_range(-10..10), rand.random_range(-10..0)),
                         pos: start,
                         start,
                         color: COLOGS.choose(&mut rand).unwrap().clone(),
@@ -183,10 +180,6 @@ impl Page for Asteroids {
         }
 
         Ok(Code::Render)
-    }
-
-    fn update_screen_rect(&mut self, rect: Rect) {
-        self.update_rect(rect);
     }
 
     async fn handle_input(&mut self, _input: SshInput) -> anyhow::Result<Code> {

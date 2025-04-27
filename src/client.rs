@@ -1,11 +1,8 @@
-use std::borrow::Cow;
 use std::fmt::Display;
 use std::future::pending;
-use std::io::Write;
 use std::mem::replace;
 use std::panic;
 use std::panic::AssertUnwindSafe;
-use std::pin::pin;
 
 use crate::handle::SshTerminal;
 use crate::handle::TerminalHandle;
@@ -15,10 +12,8 @@ use crate::site::EscapeCode;
 use crate::site::SshInput;
 use crate::site::SshPage;
 use anyhow::Context;
-use anyhow::Error;
 use anyhow::Ok;
 use anyhow::Result;
-use async_trait::async_trait;
 use crossterm::cursor;
 use crossterm::terminal;
 use crossterm::terminal::EnterAlternateScreen;
@@ -29,7 +24,6 @@ use ratatui::prelude::CrosstermBackend;
 use ratatui::Terminal;
 use ratatui::TerminalOptions;
 use ratatui::Viewport;
-use replace_with::replace_with_or_abort;
 use russh::server::Auth;
 use russh::server::Handler;
 use russh::server::Msg;
@@ -45,7 +39,6 @@ use tokio::time::interval;
 use tokio::time::Duration;
 use tokio::time::Instant;
 use tokio::time::Interval;
-use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::info_span;
@@ -239,9 +232,9 @@ enum ThreadMessage {
 impl Display for ThreadMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ThreadMessage::Resize(rect) => write!(f, "Resize"),
-            ThreadMessage::Input(ssh_input) => write!(f, "Input"),
-            ThreadMessage::NewTerm(crossterm_backend, channel_id) => write!(f, "New terminal"),
+            ThreadMessage::Resize(_) => write!(f, "Resize"),
+            ThreadMessage::Input(_) => write!(f, "Input"),
+            ThreadMessage::NewTerm(_, _) => write!(f, "New terminal"),
         }
     }
 }
@@ -400,7 +393,6 @@ impl ClientTask {
                     .as_mut()
                     .context("No term initialized")?
                     .resize(rect)?;
-                self.page.page.update_screen_rect(rect);
                 Ok(Code::Render)
             }
             ThreadMessage::Input(SshInput::Special(EscapeCode::CtrlC)) => Ok(Code::Terminate),

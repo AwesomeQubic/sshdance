@@ -1,6 +1,5 @@
 use std::{io::Write as _, mem::replace};
 
-use anyhow::Context;
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use russh::{server::Handle, ChannelId, CryptoVec};
 use tokio::{

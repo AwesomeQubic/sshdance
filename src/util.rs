@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use russh::{keys::PrivateKey, Error};
+use russh::keys::PrivateKey;
 use tracing::info;
 
 pub async fn get_or_create(path: impl AsRef<Path>) -> Result<PrivateKey> {

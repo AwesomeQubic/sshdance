@@ -1,4 +1,3 @@
-use std::ops::Deref;
 
 use anyhow::Ok;
 use async_trait::async_trait;
@@ -20,8 +19,6 @@ pub trait Page: Sync + Send {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, rect: Rect);
-
-    fn update_screen_rect(&mut self, rect: Rect) {}
 
     fn get_tps(&self) -> Option<u16> {
         None
