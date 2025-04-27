@@ -1,5 +1,7 @@
+use std::borrow::Cow;
 use std::fmt::Display;
 use std::future::pending;
+use std::io::Write;
 use std::mem::replace;
 use std::panic;
 use std::panic::AssertUnwindSafe;
@@ -7,8 +9,10 @@ use std::panic::AssertUnwindSafe;
 use crate::handle::SshTerminal;
 use crate::handle::TerminalHandle;
 use crate::site::Code;
+use crate::site::DrawFunc;
 use crate::site::DummyPage;
 use crate::site::EscapeCode;
+use crate::site::PageHandler;
 use crate::site::SshInput;
 use crate::site::SshPage;
 use anyhow::Context;
@@ -18,9 +22,11 @@ use crossterm::cursor;
 use crossterm::terminal;
 use crossterm::terminal::EnterAlternateScreen;
 use crossterm::terminal::LeaveAlternateScreen;
+use crossterm::Command;
 use crossterm::ExecutableCommand;
 use ratatui::layout::Rect;
 use ratatui::prelude::CrosstermBackend;
+use ratatui::Frame;
 use ratatui::Terminal;
 use ratatui::TerminalOptions;
 use ratatui::Viewport;
@@ -32,8 +38,11 @@ use russh::Channel;
 use russh::ChannelId;
 use russh::Pty;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio::time::Duration;
@@ -46,52 +55,111 @@ use tracing::trace;
 use tracing::warn;
 use tracing_futures::Instrument;
 
-pub struct ClientHandler {
-    thread: JoinHandle<()>,
-    tx: Sender<ThreadMessage>,
-    window_title: Option<&'static str>,
+pub struct ClientHandler<T: PageHandler + Send + Sync> {
+    handler: T,
+    state: State,
 }
 
-impl Drop for ClientHandler {
-    fn drop(&mut self) {
-        info!("Closing connection...");
-        self.thread.abort();
+#[derive(Default)]
+struct State {
+    render_send: Option<UnboundedSender<DisplayMessage>>,
+    render: Option<JoinHandle<()>>,
+    main_chanel: Option<ChannelId>,
+    animation: Option<Interval>,
+}
+
+enum DisplayMessage {
+    Render(Option<Box<DrawFunc>>),
+    Resize(Rect),
+    SetTitle(Cow<'static, str>),
+    Terminate(Option<Cow<'static, str>>),
+}
+
+struct DisplayTask {
+    rx: UnboundedReceiver<DisplayMessage>,
+    term: SshTerminal,
+}
+
+impl DisplayTask {
+    async fn run(&mut self) -> anyhow::Result<()> {
+        const MAX_SKIP: usize = 5;
+        let mut buf = Vec::with_capacity(MAX_SKIP);
+        loop {
+            let read = self.rx.recv_many(&mut buf, MAX_SKIP).await;
+            let read_slice = &mut buf[0..read];
+
+            let mut first_resize = Option::None;
+            let mut first_draw = Option::None;
+            let mut last_resize = Option::None;
+
+            let mut set_title = false;
+            for message in read_slice.iter_mut().rev() {
+                match message {
+                    DisplayMessage::Render(fn_once) => {
+                                        if first_draw.is_none() {
+                                            first_draw = fn_once.take();
+                                        }
+                                    }
+                    DisplayMessage::Resize(rect) => {
+                                        if first_draw.is_none() {
+                                            if first_resize.is_none() {
+                                                first_resize = Some(rect);
+                                            }
+                                        } else {
+                                            if last_resize.is_none() {
+                                                last_resize = Some(rect);
+                                            }
+                                        }
+                                    }
+                    DisplayMessage::Terminate(cow) => {
+                                        //TODO make it less hacky
+                                        self.term.show_cursor()?;
+                                        let backend = self.term.backend_mut();
+
+                                        //backend.execute(DisableMouseCapture)?;
+                                        backend.execute(cursor::Show)?;
+                                        backend.execute(LeaveAlternateScreen)?;
+                                        if let Some(cow) = cow.as_mut() {
+                                            backend.write(cow.as_bytes());
+                                        }
+                                        return Ok(());
+                                    }
+                    DisplayMessage::SetTitle(cow) => {
+                        if !set_title {
+                            set_title = true;
+
+                            let backend = self.term.backend_mut();
+                            backend.execute(terminal::SetTitle(cow))?;
+                        }
+                    },
+                }
+            }
+
+            if let Some(resize) = last_resize {
+                self.term.resize(*resize);
+            }
+
+            if let Some(resize) = first_draw {
+                self.term.draw(move |x| resize(x));
+            }
+
+            if let Some(resize) = first_resize {
+                self.term.resize(*resize);
+            }
+        }
     }
 }
 
-impl ClientHandler {
-    pub fn new(
-        ip: Option<std::net::SocketAddr>,
-        page: SshPage,
-        window_title: Option<&'static str>,
-    ) -> ClientHandler {
-        let (tx, rx) = mpsc::channel::<ThreadMessage>(100);
-
-        let ip_formatted = ip
-            .map(|x| format!("{x}"))
-            .unwrap_or_else(|| "N/A".to_string());
-
-        let span = info_span!("Client Task", ip = ip_formatted);
-
-        let task = ClientTask {
-            rx,
-            term: None,
-            main_chanel: None,
-            page: page.into(),
-        }
-        .run()
-        .instrument(span);
-        let thread = tokio::task::spawn(task);
-
-        ClientHandler {
-            thread,
-            tx,
-            window_title,
+impl<T: PageHandler> ClientHandler<T> {
+    pub fn new(ip: Option<std::net::SocketAddr>) -> ClientHandler<T> {
+        Self {
+            handler: T::create(ip),
+            state: State::default(),
         }
     }
 }
 
-impl Handler for ClientHandler {
+impl<T: PageHandler + Sync + Send> Handler for ClientHandler<T> {
     type Error = anyhow::Error;
 
     async fn auth_none(&mut self, user: &str) -> Result<Auth, Self::Error> {
@@ -104,22 +172,7 @@ impl Handler for ClientHandler {
         channel: Channel<Msg>,
         session: &mut Session,
     ) -> Result<bool, Self::Error> {
-        session.handle();
-
-        let terminal_handle = TerminalHandle::new(session.handle(), channel.id());
-
-        let mut backend = CrosstermBackend::new(terminal_handle);
-
-        backend.execute(EnterAlternateScreen)?;
-        backend.execute(cursor::Hide)?;
-
-        if let Some(title) = self.window_title {
-            backend.execute(terminal::SetTitle(title))?;
-        }
-
-        self.tx
-            .try_send(ThreadMessage::NewTerm(backend, channel.id()))?;
-
+        
         Ok(true)
     }
 
@@ -131,49 +184,7 @@ impl Handler for ClientHandler {
     ) -> Result<(), Self::Error> {
         trace!("User input {data:?}");
 
-        match data {
-            [3] => {
-                //Esc
-                self.tx
-                    .try_send(ThreadMessage::Input(SshInput::Special(EscapeCode::CtrlC)))?
-            }
-            [27] => {
-                //Esc
-                self.tx
-                    .try_send(ThreadMessage::Input(SshInput::Special(EscapeCode::Esc)))?
-            }
-            [13] => {
-                //Enter
-                self.tx
-                    .try_send(ThreadMessage::Input(SshInput::Special(EscapeCode::Enter)))?
-            }
-            [27, 91, 65] => {
-                //Up arrow
-                self.tx
-                    .try_send(ThreadMessage::Input(SshInput::Special(EscapeCode::Up)))?
-            }
-            [27, 91, 66] => {
-                //Down arrow
-                self.tx
-                    .try_send(ThreadMessage::Input(SshInput::Special(EscapeCode::Down)))?
-            }
-            [27, 91, 67] => {
-                //Right arrow
-                self.tx
-                    .try_send(ThreadMessage::Input(SshInput::Special(EscapeCode::Right)))?
-            }
-            [27, 91, 68] => {
-                //Left arrow
-                self.tx
-                    .try_send(ThreadMessage::Input(SshInput::Special(EscapeCode::Left)))?
-            }
-            _ => {
-                self.tx
-                    .try_send(ThreadMessage::Input(SshInput::KeyPress(char::try_from(
-                        data[0],
-                    )?)))?;
-            }
-        }
+        self.handler.handle_raw_input(data, &mut self.state);
 
         Ok(())
     }
@@ -195,7 +206,10 @@ impl Handler for ClientHandler {
             height: row_height as u16,
         };
 
-        self.tx.try_send(ThreadMessage::Resize(rect))?;
+        if let Some(x) = &mut self.state.render_send {
+            x.send(DisplayMessage::Resize(rect));
+        };
+
         Ok(())
     }
 
@@ -212,40 +226,48 @@ impl Handler for ClientHandler {
         session: &mut Session,
     ) -> Result<(), Self::Error> {
         info!("Client is using {term}");
+        if let Some(x) = &mut self.state.render_send {
+            x.send(DisplayMessage::Resize(rect));
+        };
+
+        let terminal_handle = TerminalHandle::new(session.handle(), channel.id());
+
+        let mut backend = CrosstermBackend::new(terminal_handle);
+        backend.execute(EnterAlternateScreen)?;
+        backend.execute(cursor::Hide)?;
+
         let rect = Rect {
             x: 0,
             y: 0,
             width: col_width as u16,
             height: row_height as u16,
         };
-        self.tx.try_send(ThreadMessage::Resize(rect))?;
+
+        let (tx, rx) = unbounded_channel();
+
+        tokio::spawn(DisplayTask {
+            rx,
+            term: Terminal::with_options(
+                backend,
+                TerminalOptions {
+                    viewport: Viewport::Fixed(rect),
+                },
+            )?
+        }.run());
+
+        self.state.render_send = Some(tx);
+        self.handler.setup(&mut self.state);
+
         Ok(())
     }
 }
 
-enum ThreadMessage {
-    Resize(Rect),
-    Input(SshInput),
-    NewTerm(CrosstermBackend<TerminalHandle>, ChannelId),
-}
-
-impl Display for ThreadMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ThreadMessage::Resize(_) => write!(f, "Resize"),
-            ThreadMessage::Input(_) => write!(f, "Input"),
-            ThreadMessage::NewTerm(_, _) => write!(f, "New terminal"),
-        }
+async fn animation_interval(interval: Option<&mut Interval>) -> Instant {
+    if let Some(animation) = interval {
+        animation.tick().await
+    } else {
+        pending::<Instant>().await
     }
-}
-
-struct ClientTask {
-    main_chanel: Option<ChannelId>,
-
-    page: LoadedPage,
-
-    rx: Receiver<ThreadMessage>,
-    term: Option<SshTerminal>,
 }
 
 struct LoadedPage {
@@ -254,13 +276,7 @@ struct LoadedPage {
 }
 
 impl LoadedPage {
-    async fn animation_interval(&mut self) -> Instant {
-        if let Some(animation) = self.animation.as_mut() {
-            animation.tick().await
-        } else {
-            pending::<Instant>().await
-        }
-    }
+
 }
 
 impl From<SshPage> for LoadedPage {
@@ -301,54 +317,6 @@ impl ClientTask {
                     }
                 }
             };
-
-            match code {
-                anyhow::Result::Ok(x) => match x {
-                    Code::ChangeTo => {
-                        self.page = self.page.page.slingshot().into();
-
-                        let rendered = self.render().await;
-                        self = rendered.ownership;
-                        match rendered.results {
-                            std::result::Result::Ok(_) => {}
-                            std::result::Result::Err(RenderError::Panicked) => {
-                                let _ = self.terminate().await;
-                                return;
-                            }
-                            std::result::Result::Err(RenderError::InternalError(e)) => {
-                                warn!("Encountered error doing rendering {e}");
-                            }
-                        }
-                    }
-                    Code::SkipRenderer => {
-                        continue;
-                    }
-                    Code::Render => {
-                        let rendered = self.render().await;
-                        self = rendered.ownership;
-                        match rendered.results {
-                            std::result::Result::Ok(_) => {}
-                            std::result::Result::Err(RenderError::Panicked) => {
-                                let _ = self.terminate().await;
-                                return;
-                            }
-                            std::result::Result::Err(RenderError::InternalError(e)) => {
-                                warn!("Encountered error doing rendering {e}");
-                            }
-                        }
-                    }
-                    Code::Terminate => {
-                        if let Err(error) = self.terminate().await {
-                            warn!("Encountered error {error} while terminating connection")
-                        };
-                        return;
-                    }
-                },
-                Err(err) => {
-                    warn!("Error {err:?} reading data from task terminating",);
-                    return;
-                }
-            }
         }
     }
 

@@ -1,35 +1,36 @@
+use std::os::unix::net::SocketAddr;
 
 use anyhow::Ok;
 use async_trait::async_trait;
 use ratatui::layout::Rect;
 use ratatui::Frame;
 
-pub type SshPage = Box<dyn Page + 'static>;
+pub type DrawFunc = dyn for<'a> FnOnce(&mut Frame<'a>) + Send + Sync;
 
-#[async_trait]
-pub trait Page: Sync + Send {
-    async fn handle_input(&mut self, input: SshInput) -> anyhow::Result<Code>;
+pub trait PageHandler: Sync + Send {
+    fn create(ip: Option<std::net::SocketAddr>) -> Self;
 
-    fn tick(&mut self) -> anyhow::Result<Code> {
-        Ok(Code::SkipRenderer)
-    }
+    async fn setup(&mut self, engine: &mut impl EngineRef);
 
-    fn slingshot(self: Box<Self>) -> SshPage {
-        unimplemented!("you did not implement page switching")
-    }
+    async fn handle_raw_input(&mut self, input: &[u8], engine: &mut impl EngineRef) {}
 
-    fn render(&mut self, frame: &mut Frame<'_>, rect: Rect);
+    async fn handle_input(&mut self, input: SshInput, engine: &mut impl EngineRef);
 
-    fn get_tps(&self) -> Option<u16> {
-        None
-    }
+    async fn animate(&mut self, engine: &mut impl EngineRef);
+
+    async fn resize(&mut self, engine: &mut impl EngineRef);
+
+    async fn notify(&mut self, engine: &mut impl EngineRef);
 }
 
-pub enum Code {
-    ChangeTo,
-    SkipRenderer,
-    Render,
-    Terminate,
+pub trait EngineRef {
+    fn set_tick_rate(&mut self, tick_rate: Option<u8>);
+
+    fn terminate<'a, T: Into<&'a str>>(&mut self, message: T);
+
+    fn set_window_title<'a, T: Into<&'a str>>(&mut self, message: T);
+
+    fn render<'a, T: FnOnce(&mut Frame<'a>) + Send + Sync>(func: DrawFunc);
 }
 
 pub enum SshInput {
@@ -45,15 +46,4 @@ pub enum EscapeCode {
     Right,
     Left,
     CtrlC,
-}
-
-pub struct DummyPage;
-
-#[async_trait]
-impl Page for DummyPage {
-    async fn handle_input(&mut self, input: SshInput) -> anyhow::Result<Code> {
-        Ok(Code::SkipRenderer)
-    }
-
-    fn render(&mut self, frame: &mut Frame<'_>, rect: Rect) {}
 }

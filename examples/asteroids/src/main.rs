@@ -7,7 +7,10 @@ use std::{
 
 use anyhow::Ok;
 use async_trait::async_trait;
-use rand::{seq::{IndexedRandom, SliceRandom}, Rng};
+use rand::{
+    seq::{IndexedRandom, SliceRandom},
+    Rng,
+};
 use ratatui::{
     layout::{Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
@@ -139,7 +142,10 @@ impl Page for Asteroids {
                     self.spawn = a;
                 }
                 None => {
-                    let start = (rand.random_range(area.x..area.x + area.width), area.bottom());
+                    let start = (
+                        rand.random_range(area.x..area.x + area.width),
+                        area.bottom(),
+                    );
                     self.asteroids.push(Asteroid {
                         velocity: (rand.random_range(-10..10), rand.random_range(-10..0)),
                         pos: start,
