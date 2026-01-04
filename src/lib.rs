@@ -1,48 +1,39 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 
-use client::ClientHandler;
 use russh::{
     keys::PrivateKey,
     server::{Config, Server},
     MethodKind, MethodSet,
 };
-use site::SshPage;
 use tracing::info;
 
-mod client;
-mod handle;
-pub mod site;
+pub mod api;
+mod error;
+mod internal;
 pub mod util;
 
-pub struct SshDanceBuilder {
+pub use error::Error;
+
+use crate::{api::ClientHandler, internal::SshSessionHandler};
+
+pub struct SshDanceBuilder<H: ClientHandler> {
     socket: SocketAddr,
     key_pair: Vec<PrivateKey>,
 
-    window_title: Option<&'static str>,
-
-    initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
+    data: PhantomData<H>,
 }
 
-impl SshDanceBuilder {
-    pub fn new(
-        socket: SocketAddr,
-        initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
-    ) -> SshDanceBuilder {
-        SshDanceBuilder {
+impl<H: ClientHandler> SshDanceBuilder<H> {
+    pub fn new(socket: SocketAddr) -> Self {
+        Self {
             socket,
             key_pair: vec![PrivateKey::random(
                 &mut rand_core::OsRng,
                 russh::keys::Algorithm::Ed25519,
             )
             .unwrap()],
-            initial_site,
-            window_title: None,
+            data: PhantomData,
         }
-    }
-
-    pub fn set_window_title(mut self, title: &'static str) -> Self {
-        self.window_title = Some(title);
-        self
     }
 
     pub fn set_keys(mut self, key_pair: Vec<PrivateKey>) -> Self {
@@ -50,7 +41,7 @@ impl SshDanceBuilder {
         self
     }
 
-    pub async fn run(self) -> Result<(), anyhow::Error> {
+    pub async fn run(self) -> Result<(), crate::Error> {
         let config = Config {
             inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
             auth_rejection_time: std::time::Duration::from_secs(3),
@@ -64,31 +55,27 @@ impl SshDanceBuilder {
             ..Default::default()
         };
 
-        let mut server = SshSiteServer {
-            initial_site: self.initial_site,
-            window_title: self.window_title,
-        };
+        let mut server: SshSiteServer<H> = SshSiteServer { data: PhantomData };
         server.run(config, self.socket).await
     }
 }
 
-pub(crate) struct SshSiteServer {
-    initial_site: fn(Option<std::net::SocketAddr>) -> SshPage,
-    window_title: Option<&'static str>,
+pub(crate) struct SshSiteServer<H: ClientHandler> {
+    data: PhantomData<H>,
 }
 
-impl SshSiteServer {
-    async fn run(&mut self, config: Config, addr: SocketAddr) -> Result<(), anyhow::Error> {
+impl<H: ClientHandler> SshSiteServer<H> {
+    async fn run(&mut self, config: Config, addr: SocketAddr) -> Result<(), crate::Error> {
         self.run_on_address(Arc::new(config), addr).await?;
         Ok(())
     }
 }
 
-impl Server for SshSiteServer {
-    type Handler = ClientHandler;
+impl<H: ClientHandler> Server for SshSiteServer<H> {
+    type Handler = SshSessionHandler<H>;
 
     fn new_client(&mut self, addr: Option<std::net::SocketAddr>) -> Self::Handler {
         info!("New client connected {addr:?}");
-        ClientHandler::new(addr, (self.initial_site)(addr), self.window_title.clone())
+        SshSessionHandler::create(addr)
     }
 }

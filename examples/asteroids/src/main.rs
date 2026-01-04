@@ -1,48 +1,43 @@
 //This is a half serious I use for my ssh site so have fun :3
 
-use std::{
-    f64::consts::E,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-};
-
-use anyhow::Ok;
-use async_trait::async_trait;
-use rand::{
-    seq::{IndexedRandom, SliceRandom},
-    Rng,
-};
+use rand::{seq::IndexedRandom, Rng};
 use ratatui::{
-    layout::{Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
-    widgets::{
-        canvas::{Canvas, Circle, Line, Rectangle},
-        Paragraph,
-    },
+    layout::Rect,
+    style::{Color, Modifier, Style},
+    text::Span,
+    widgets::canvas::{Canvas, Circle, Line, Rectangle},
     Frame,
 };
 use sshdance::{
-    site::{Code, Page, SshInput, SshPage},
+    api::{
+        term::{CallbackRez, SshTerminal},
+        utils::SimpleTerminalHandler,
+    },
     SshDanceBuilder,
 };
-use tracing::{info, warn};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    num::NonZero,
+};
 
 const COLOGS: [Color; 4] = [Color::Green, Color::Red, Color::Magenta, Color::Cyan];
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    console_subscriber::init();
-    let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2222);
-    SshDanceBuilder::new(socket, |_| Asteroids::new())
+async fn main() -> Result<(), sshdance::Error> {
+    tracing_subscriber::fmt::init();
+    let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2223);
+    SshDanceBuilder::<SimpleTerminalHandler<Asteroids>>::new(socket)
         .run()
         .await
+        .unwrap();
+    Ok(())
 }
 
+#[derive(Default)]
 pub struct Asteroids {
     asteroids: Vec<Asteroid>,
     circles: Vec<Circle>,
     spawn: usize,
-
-    viewpoint_data: Option<(Rect, f64)>,
 }
 
 struct Asteroid {
@@ -52,18 +47,64 @@ struct Asteroid {
     color: Color,
 }
 
-impl Asteroids {
-    pub fn new() -> SshPage {
-        Box::new(Asteroids {
-            asteroids: Vec::new(),
-            circles: Vec::new(),
-            spawn: 0,
-            viewpoint_data: None,
-        }) as SshPage
+impl SshTerminal for Asteroids {
+    type MessageType = ();
+    const DEFAULT_TPS: Option<std::num::NonZero<u8>> = Some(NonZero::new(10).unwrap());
+
+    fn on_animation(
+        &mut self,
+        engine: &mut impl sshdance::api::term::EngineRef<Self>,
+    ) -> CallbackRez {
+        let mut rand = rand::rng();
+        let area = engine.current_size();
+
+        match self.spawn.checked_sub(1) {
+            Some(a) => {
+                self.spawn = a;
+            }
+            None => {
+                let start = (rand.random_range(0..area.width), area.height);
+                self.asteroids.push(Asteroid {
+                    velocity: (rand.random_range(-10..10), rand.random_range(-10..0)),
+                    pos: start,
+                    start,
+                    color: COLOGS.choose(&mut rand).unwrap().clone(),
+                });
+
+                self.spawn = rand.random_range(0..3);
+            }
+        };
+
+        for ele in &mut self.circles {
+            ele.radius += 5f64;
+        }
+
+        self.asteroids.retain_mut(|ele| {
+            let (x, y) = ele.pos;
+            let (x_vel, y_vel) = ele.velocity;
+
+            let new_x = ((x as i32) + x_vel) as u16;
+            let new_y = ((y as i32) + y_vel) as u16;
+
+            if (0..area.width).contains(&new_x) && (0..area.height).contains(&new_y) {
+                ele.pos = (new_x, new_y);
+                true
+            } else {
+                self.circles.push(Circle {
+                    x: x.into(),
+                    y: y.into(),
+                    radius: 1f64,
+                    color: ele.color.clone(),
+                });
+                false
+            }
+        });
+
+        CallbackRez::PushToRenderer
     }
 
-    pub fn render_background(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        let (area, max_size) = self.viewpoint_data.unwrap();
+    fn draw(&mut self, frame: &mut Frame<'_>) {
+        let area = frame.area();
         self.circles.retain(|x| x.radius < 25.0);
 
         let circles = &self.circles;
@@ -112,83 +153,25 @@ impl Asteroids {
                     });
                 }
             });
-
         frame.render_widget(primary, area);
-    }
 
-    fn update_rect(&mut self, area: Rect) {
-        let max_radius = f64::sqrt((area.height as f64).powi(2) + (area.width as f64).powi(2));
-        self.viewpoint_data = Some((area, max_radius));
-    }
-}
+        let line = ratatui::text::Line::default()
+            .spans([Span::styled(
+                "SSHDance",
+                Style::new().add_modifier(Modifier::BOLD).fg(Color::Reset),
+            )])
+            .centered();
+        let centered_y = area.height / 2;
+        let new_area: Rect = Rect::new(area.x, centered_y, area.width, 1);
+        frame.render_widget(line, new_area);
 
-#[async_trait]
-impl Page for Asteroids {
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        self.update_rect(area);
-        self.render_background(frame, area);
-    }
-
-    fn get_tps(&self) -> Option<u16> {
-        Some(20)
-    }
-
-    fn tick(&mut self) -> anyhow::Result<Code> {
-        let mut rand = rand::rng();
-
-        if let Some((area, _)) = self.viewpoint_data {
-            match self.spawn.checked_sub(1) {
-                Some(a) => {
-                    self.spawn = a;
-                }
-                None => {
-                    let start = (
-                        rand.random_range(area.x..area.x + area.width),
-                        area.bottom(),
-                    );
-                    self.asteroids.push(Asteroid {
-                        velocity: (rand.random_range(-10..10), rand.random_range(-10..0)),
-                        pos: start,
-                        start,
-                        color: COLOGS.choose(&mut rand).unwrap().clone(),
-                    });
-
-                    self.spawn = 3;
-                }
-            };
-
-            for ele in &mut self.circles {
-                ele.radius += 5f64;
-            }
-
-            self.asteroids.retain_mut(|ele| {
-                let (x, y) = ele.pos;
-                let (x_vel, y_vel) = ele.velocity;
-
-                let new_x = ((x as i32) + x_vel) as u16;
-                let new_y = ((y as i32) + y_vel) as u16;
-
-                if (area.x..area.x + area.width).contains(&new_x)
-                    && (area.y..area.y + area.height).contains(&new_y)
-                {
-                    ele.pos = (new_x, new_y);
-                    true
-                } else {
-                    self.circles.push(Circle {
-                        x: x.into(),
-                        y: y.into(),
-                        radius: 1f64,
-                        color: ele.color.clone(),
-                    });
-                    false
-                }
-            });
-        }
-
-        Ok(Code::Render)
-    }
-
-    async fn handle_input(&mut self, _input: SshInput) -> anyhow::Result<Code> {
-        Ok(Code::SkipRenderer)
+        let line = ratatui::text::Line::default()
+            .spans([Span::styled(
+                "[Install from crates to proceed]",
+                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+            )])
+            .centered();
+        let new_area = Rect::new(area.x, centered_y + 1, area.width, 1);
+        frame.render_widget(line, new_area);
     }
 }

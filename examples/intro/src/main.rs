@@ -1,29 +1,28 @@
-//This is a half serious I use for my ssh site so have fun :3
-
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-
-use anyhow::Ok;
-use async_trait::async_trait;
-use rand::prelude::IndexedRandom;
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
-    Frame,
 };
 use sshdance::{
-    site::{Code, Page, SshInput, SshPage},
+    api::{
+        term::{CallbackRez, SshTerminal},
+        utils::SimpleTerminalHandler,
+    },
     SshDanceBuilder,
+};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    num::NonZero,
 };
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     tracing_subscriber::fmt::init();
     let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2222);
-    SshDanceBuilder::new(socket, |_| IntroPage::new())
+    SshDanceBuilder::<SimpleTerminalHandler<IntroTerminal>>::new(socket)
         .run()
         .await
+        .unwrap();
 }
 
 const BOOT_SPLASH: &[&'static str] = &[
@@ -49,34 +48,46 @@ const BOOT_SPLASH: &[&'static str] = &[
     "[ DONE ] Installing malware",
 ];
 
-pub struct IntroPage {
-    frame: usize,
-    text: Vec<Line<'static>>,
+const fn get_splash(index: usize) -> &'static str {
+    BOOT_SPLASH[index % BOOT_SPLASH.len()]
 }
 
-impl IntroPage {
-    pub fn new() -> SshPage {
-        Box::new(IntroPage {
-            frame: 0,
-            text: Vec::with_capacity(100),
-        }) as Box<(dyn Page + Send + Sync + 'static)>
+#[derive(Default)]
+struct IntroTerminal {
+    phase: usize,
+}
+
+impl SshTerminal for IntroTerminal {
+    type MessageType = ();
+    const DEFAULT_TPS: Option<std::num::NonZero<u8>> = Some(NonZero::new(5).unwrap());
+
+    fn on_animation(
+        &mut self,
+        _engine: &mut impl sshdance::api::term::EngineRef<Self>,
+    ) -> CallbackRez {
+        self.phase += 1;
+        CallbackRez::PushToRenderer
     }
-}
 
-#[async_trait]
-impl Page for IntroPage {
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        let start = self
-            .text
-            .len()
-            .checked_sub(area.height as usize)
-            .unwrap_or(0);
-        let text = Paragraph::new(self.text[start..].to_vec());
-        frame.render_widget(text, area);
+    fn draw(&mut self, frame: &mut ratatui::Frame<'_>) {
+        let area = frame.area();
+        let max = (area.height as usize).max(self.phase);
+        for i in 0..max {
+            let line = Line::from(get_splash(self.phase + i));
+            frame.render_widget(
+                line,
+                Rect {
+                    x: 0,
+                    y: (i as u16),
+                    width: area.width,
+                    height: 1,
+                },
+            );
+        }
 
         //Overlay render
         let cursor_color = {
-            let step = self.frame / 10;
+            let step = self.phase / 10;
             if step % 2 == 0 {
                 Color::LightMagenta
             } else {
@@ -87,7 +98,7 @@ impl Page for IntroPage {
         let line = Line::default()
             .spans([
                 Span::styled(
-                    "Qubic",
+                    "SSHDance",
                     Style::new().add_modifier(Modifier::BOLD).fg(Color::Reset),
                 ),
                 Span::styled(" ", Style::new().bg(cursor_color)),
@@ -99,32 +110,11 @@ impl Page for IntroPage {
 
         let line = Line::default()
             .spans([Span::styled(
-                "[Press enter to proceed]",
+                "[Install from crates to proceed]",
                 Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
             )])
             .centered();
         let new_area = Rect::new(area.x, centered_y + 1, area.width, 1);
         frame.render_widget(line, new_area);
-    }
-
-    fn get_tps(&self) -> Option<u16> {
-        Some(10)
-    }
-
-    fn tick(&mut self) -> anyhow::Result<Code> {
-        self.frame += 1;
-        if self.text.len() == 100 {
-            //TODO make faster
-            self.text.remove(0);
-        }
-        self.text.push(Line::styled(
-            *BOOT_SPLASH.choose(&mut rand::rng()).unwrap(),
-            Style::new().fg(Color::DarkGray),
-        ));
-        Ok(Code::Render)
-    }
-
-    async fn handle_input(&mut self, _input: SshInput) -> anyhow::Result<Code> {
-        Ok(Code::SkipRenderer)
     }
 }

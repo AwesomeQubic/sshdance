@@ -1,0 +1,3 @@
+- Add auth
+- Add sftp
+- Make docs

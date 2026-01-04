@@ -3,7 +3,6 @@
 members = [
     "examples/intro",
     "examples/asteroids",
-    "examples/panic",
 ]
 
 [package]
@@ -14,16 +13,16 @@ license = "MPL-2.0"
 description = "A simple SSH TUI-application framework"
 
 [dependencies]
-anyhow = "1.0.98"
-async-trait = "0.1.88"
+async-trait = "0.1.89"
 crossterm = { version = "0.29.0", features = ["event-stream"] }
-russh = "0.51.1"
+russh = "0.56.0"
 # too tired to enumare all features :3
-tokio = { version = "1.44.2", features = [ "rt", "net", "sync", "fs" ]}
-ratatui = { version = "=0.30.0-alpha.0", features = [ "unstable-backend-writer" ]}
-tracing = "0.1.41"
-ed25519-dalek = "2.1.1"
-replace_with = "0.1.7"
+tokio = { version = "1.48.0", features = [ "rt", "net", "sync", "fs" ]}
+ratatui = { version = "0.30.0", features = [ "unstable-backend-writer" ]}
+tracing = "0.1.44"
+ed25519-dalek = "2.2.0"
+replace_with = "0.1.8"
 tracing-futures = { version = "0.2.5", features = [ "tokio" ] }
-# Fuck you russh-keys
-rand_core = { version = "0.6.4", features = ["getrandom", "std"] }
+thiserror = "2.0.17"
+termwiz = "0.23.3"
+rand_core = { version = "0.6.4" }

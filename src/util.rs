@@ -1,10 +1,9 @@
 use std::path::Path;
 
-use anyhow::Result;
 use russh::keys::PrivateKey;
 use tracing::info;
 
-pub async fn get_or_create(path: impl AsRef<Path>) -> Result<PrivateKey> {
+pub async fn get_or_create(path: impl AsRef<Path>) -> Result<PrivateKey, crate::Error> {
     info!("Loading keypair");
     let path: &Path = path.as_ref();
 
@@ -15,7 +14,7 @@ pub async fn get_or_create(path: impl AsRef<Path>) -> Result<PrivateKey> {
             let key = PrivateKey::random(&mut rand_core::OsRng, russh::keys::Algorithm::Ed25519)
                 .expect("Unable to create the key");
 
-            key.write_openssh_file(path, russh::keys::ssh_key::LineEnding::default());
+            let _ = key.write_openssh_file(path, russh::keys::ssh_key::LineEnding::default());
 
             Ok(key)
         }

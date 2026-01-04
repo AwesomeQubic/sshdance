@@ -1,29 +1,23 @@
 use std::{io::Write as _, mem::replace};
 
 use ratatui::{prelude::CrosstermBackend, Terminal};
-use russh::{server::Handle, ChannelId, CryptoVec};
-use tokio::{
-    sync::mpsc::{unbounded_channel, UnboundedSender},
-    task::JoinHandle,
-};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tracing::{trace, warn};
 
-pub type SshTerminal = Terminal<CrosstermBackend<TerminalHandle>>;
+pub type RatatuiTerminal = Terminal<CrosstermBackend<SinkTerminalHandle>>;
 
-pub struct TerminalHandle {
+pub struct SinkTerminalHandle {
     // The sink collects the data which is finally flushed to the handle.
-    sink: CryptoVec,
-
+    sink: Vec<u8>,
     tx: UnboundedSender<WriteMessage>,
-    handle: Option<JoinHandle<()>>,
 }
 
 enum WriteMessage {
     Close,
-    Write(CryptoVec),
+    Write(Vec<u8>),
 }
 
-impl Drop for TerminalHandle {
+impl Drop for SinkTerminalHandle {
     fn drop(&mut self) {
         //Try flushing one last time
         let _ = self.flush();
@@ -34,10 +28,10 @@ impl Drop for TerminalHandle {
     }
 }
 
-impl TerminalHandle {
-    pub fn new(handle: Handle, channel_id: ChannelId) -> Self {
+impl SinkTerminalHandle {
+    pub fn new(channel: russh::Channel<russh::server::Msg>) -> Self {
         let (tx, mut rx) = unbounded_channel::<WriteMessage>();
-        let handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 let Some(data) = rx.recv().await else {
                     warn!("Encountered an error while receiving write message message");
@@ -47,14 +41,13 @@ impl TerminalHandle {
                 match data {
                     WriteMessage::Close => {
                         trace!("Closing session with client");
-                        if let Err(_) = handle.close(channel_id).await {
+                        if let Err(_) = channel.close().await {
                             warn!("Encounter error while terminating connection")
                         };
                         return;
                     }
                     WriteMessage::Write(data) => {
-                        trace!("Sending data to client");
-                        if let Err(err) = handle.data(channel_id, data).await {
+                        if let Err(err) = channel.data(&*data).await {
                             warn!("Encounter error {err:?} while sending data to connection")
                         };
                     }
@@ -62,24 +55,22 @@ impl TerminalHandle {
             }
         });
 
-        TerminalHandle {
-            sink: CryptoVec::new(),
+        SinkTerminalHandle {
+            sink: Vec::new(),
             tx,
-            handle: Some(handle),
         }
     }
-
 }
 
 // The crossterm backend writes to the terminal handle.
-impl std::io::Write for TerminalHandle {
+impl std::io::Write for SinkTerminalHandle {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.sink.extend(buf);
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        let old_vec = replace(&mut self.sink, CryptoVec::new());
+        let old_vec = replace(&mut self.sink, Vec::new());
         if let Err(_) = self.tx.send(WriteMessage::Write(old_vec)) {
             return std::io::Result::Err(std::io::ErrorKind::BrokenPipe.into());
         };
