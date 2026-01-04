@@ -1,5 +1,7 @@
 # SSHDance
 
+![](./misc/demo.gif)
+
 So here is a small networking lib made by me that **hopefully** will make it a bit easier to make ssh sites...
 
 I do not like being overly formal so if you want to see an example of it working look at `examples/intro`. There probably be a branch in this repo titled `qubic-experimental` or something that I will push changes I'm making to SSHdance for my site...
