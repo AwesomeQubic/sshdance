@@ -57,7 +57,7 @@ impl<T: SshTerminal> EngineRef<T> for RenderEngineApi<T> {
     }
 
     fn current_size(&mut self) -> Rect {
-        self.size.clone()
+        self.size
     }
 }
 
@@ -67,7 +67,6 @@ pub enum TerminalInputs {
 }
 
 pub async fn create_and_detach<H: ClientHandler>(
-    channel: russh::Channel<russh::server::Msg>,
     width: u32,
     height: u32,
     session_handler: &mut H,
@@ -187,8 +186,8 @@ async fn dispatch_inner<H: ClientHandler>(
                 backend.execute(cursor::Show)?;
                 backend.execute(LeaveAlternateScreen)?;
 
-                backend.write(msg.replace("\n", "\n\r").as_bytes())?;
-                backend.write(b"\n\r")?;
+                backend.write_all(msg.replace("\n", "\n\r").as_bytes())?;
+                backend.write_all(b"\n\r")?;
                 backend.flush()?;
 
                 backend.writer_mut().close().await?;

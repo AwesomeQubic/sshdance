@@ -28,7 +28,6 @@ impl<T: ClientHandler> SshSessionHandler<T> {
 }
 
 enum ChannelState {
-    TermRequest(russh::Channel<russh::server::Msg>),
     TerminalSession((UnboundedSender<TerminalInputs>, JoinHandle<()>, InputParser)),
 }
 
@@ -42,17 +41,10 @@ impl<T: ClientHandler> Handler for SshSessionHandler<T> {
 
     async fn channel_open_session(
         &mut self,
-        channel: russh::Channel<russh::server::Msg>,
+        _channel: russh::Channel<russh::server::Msg>,
         _session: &mut russh::server::Session,
     ) -> Result<bool, Self::Error> {
-        if self.handler.terminal_request() == Decision::Deny {
-            return Ok(false);
-        }
-
-        self.channels
-            .insert(channel.id(), ChannelState::TermRequest(channel));
-
-        Ok(true)
+        Ok(self.handler.terminal_request() == Decision::Accept)
     }
 
     async fn pty_request(
@@ -66,17 +58,9 @@ impl<T: ClientHandler> Handler for SshSessionHandler<T> {
         _modes: &[(russh::Pty, u32)],
         session: &mut russh::server::Session,
     ) -> Result<(), Self::Error> {
-        let term = self
-            .channels
-            .remove(&channel)
-            .ok_or(crate::Error::PtyRequestBeforeOpenRequest)?;
-
-        let ChannelState::TermRequest(reg) = term else {
-            return Err(crate::Error::PtyRequestTwice);
-        };
 
         let session =
-            term::create_and_detach(reg, col_width, row_height, &mut self.handler, session.handle(), channel).await?;
+            term::create_and_detach(col_width, row_height, &mut self.handler, session.handle(), channel).await?;
 
         self.channels
             .insert(channel, ChannelState::TerminalSession(session));

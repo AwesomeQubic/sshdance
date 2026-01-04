@@ -42,7 +42,7 @@ impl SinkTerminalHandle {
                 match data {
                     WriteMessage::Close => {
                         trace!("Closing session with client");
-                        if let Err(_) = handle.close(channel_id).await {
+                        if handle.close(channel_id).await.is_err() {
                             warn!("Encounter error while terminating connection")
                         };
                         return;
@@ -67,7 +67,7 @@ impl SinkTerminalHandle {
     pub async fn close(&mut self) -> Result<(), crate::Error> {
         self.tx.send(WriteMessage::Close).unwrap();
 
-        let mut handle_option = replace(&mut self.handle, None);
+        let mut handle_option = self.handle.take();
         let handle = handle_option
             .as_mut().unwrap();
         handle.await.unwrap();
@@ -85,7 +85,7 @@ impl std::io::Write for SinkTerminalHandle {
 
     fn flush(&mut self) -> std::io::Result<()> {
         let old_vec = replace(&mut self.sink, CryptoVec::new());
-        if let Err(_) = self.tx.send(WriteMessage::Write(old_vec)) {
+        if self.tx.send(WriteMessage::Write(old_vec)).is_err() {
             return std::io::Result::Err(std::io::ErrorKind::BrokenPipe.into());
         };
         Ok(())
