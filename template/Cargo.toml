@@ -9,7 +9,4 @@ edition = "2021"
 sshdance = { git = "https://github.com/AwesomeQubic/sshdance.git", branch = "qubic-experimental"}
 tokio = { version = "1.41.1", features = ["full"]}
 ratatui = "0.30.0"
-async-trait = "0.1.83"
-anyhow = "1.0.93"
-crossterm = "0.28.1"
 tracing-subscriber = "0.3.18"
