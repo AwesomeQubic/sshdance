@@ -2,7 +2,7 @@
 
 members = [
     "examples/intro",
-    "examples/asteroids",
+    "examples/asteroids", "examples/hello",
 ]
 
 [package]

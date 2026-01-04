@@ -1,0 +1,10 @@
+[package]
+name = "hello"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sshdance = { path = "../../" }
+tokio = { version = "1.49.0", features = [ "rt", "net", "sync", "fs" ]}
+ratatui = { version = "0.30.0", features = [ "unstable-backend-writer" ]}
+tracing-subscriber = "0.3.22"

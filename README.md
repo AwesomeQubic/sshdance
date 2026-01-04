@@ -6,11 +6,6 @@ I do not like being overly formal so if you want to see an example of it working
 
 Have fun and may meme driven development be with you
 
-## Security
-This is less secure than correctly setup HTTPs. There are no protections against potential MITM-attacks on first connections, depending on client configuration, public keys are typically stored to compare with the key served from the server. This also means there are no proper means to rotate keys without it looking like a MITM-attack.
-
-**Use at your own risk!**
-
 ## I have no attention span and want to get this working NOW
 
 Great get yourself some `nix` and run `nix flake init --template github:AwesomeQubic/sshdance/qubic-experimental`.<br>
@@ -33,43 +28,37 @@ Well here is a list of my current TODOs:
 ## Example
 
 ```rust
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use anyhow::Ok;
-use async_trait::async_trait;
-use ratatui::{
-    layout::Rect,
-    widgets::Paragraph,
-    Frame,
-};
-use sshdance::{
-    site::{Code, Page, SshInput, SshPage},
-    SshDanceBuilder,
-};
-
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2222);
-    SshDanceBuilder::new(socket, |_| HelloWorld::new())
+async fn main() -> Result<(), sshdance::Error> {
+    tracing_subscriber::fmt::init();
+    let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2223);
+    SshDanceBuilder::<SimpleTerminalHandler<HelloWorld>>::new(socket)
         .run()
         .await
+        .unwrap();
+    Ok(())
 }
 
-pub struct HelloWorld;
+#[derive(Default)]
+pub struct HelloWorld {}
 
-impl HelloWorld {
-    pub fn new() -> SshPage {
-        Box::new(HelloWorld) as SshPage
+impl SshTerminal for HelloWorld {
+    type MessageType = ();
+
+    fn draw(&mut self, frame: &mut Frame<'_>) {
+        let line = ratatui::text::Line::default()
+            .spans([Span::styled(
+                "Hello ssh",
+                Style::new().add_modifier(Modifier::BOLD).fg(Color::Reset),
+            )])
+            .centered();
+        frame.render_widget(line, frame.area());
     }
 }
 
-#[async_trait]
-impl Page for HelloWorld {
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        frame.render_widget(Paragraph::new("Hello world"), area);
-    }
-
-    async fn handle_input(&mut self, _input: SshInput) -> anyhow::Result<Code> {
-        Ok(Code::Render)
-    }
-}
 ```
+
+## Security
+This is less secure than correctly setup HTTPs. There are no protections against potential MITM-attacks on first connections, depending on client configuration, public keys are typically stored to compare with the key served from the server. This also means there are no proper means to rotate keys without it looking like a MITM-attack.
+
+**Use at your own risk!**
