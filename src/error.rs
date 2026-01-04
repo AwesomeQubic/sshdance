@@ -11,6 +11,9 @@ pub enum Error {
     #[error("Got PTY twice")]
     PtyRequestTwice,
 
+    #[error("Session closed")]
+    SessionClosed,
+
     #[error("Enocuntered russh error {0}")]
     RusshError(#[from] russh::Error),
 

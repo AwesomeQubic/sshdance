@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use russh::{server::Handler, ChannelId};
 use termwiz::input::InputParser;
 use tokio::{sync::mpsc::UnboundedSender, task::JoinHandle};
+use tracing::trace;
 
 use crate::{
     api::{ClientHandler, Decision},
@@ -34,6 +35,7 @@ enum ChannelState {
 impl<T: ClientHandler> Handler for SshSessionHandler<T> {
     type Error = crate::Error;
 
+
     async fn auth_none(&mut self, _user: &str) -> Result<russh::server::Auth, Self::Error> {
         Ok(russh::server::Auth::Accept)
     }
@@ -62,7 +64,7 @@ impl<T: ClientHandler> Handler for SshSessionHandler<T> {
         _pix_width: u32,
         _pix_height: u32,
         _modes: &[(russh::Pty, u32)],
-        _session: &mut russh::server::Session,
+        session: &mut russh::server::Session,
     ) -> Result<(), Self::Error> {
         let term = self
             .channels
@@ -74,7 +76,7 @@ impl<T: ClientHandler> Handler for SshSessionHandler<T> {
         };
 
         let session =
-            term::create_and_detach(reg, col_width, row_height, &mut self.handler).await?;
+            term::create_and_detach(reg, col_width, row_height, &mut self.handler, session.handle(), channel).await?;
 
         self.channels
             .insert(channel, ChannelState::TerminalSession(session));
@@ -91,6 +93,8 @@ impl<T: ClientHandler> Handler for SshSessionHandler<T> {
             .channels
             .get_mut(&channel)
             .ok_or(crate::Error::UnknownChannel)?;
+
+        trace!("Got data from client {data:?}");
 
         match state {
             ChannelState::TerminalSession((sender, _, parser)) => {

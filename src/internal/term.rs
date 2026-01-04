@@ -6,6 +6,7 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::{layout::Rect, prelude::CrosstermBackend, TerminalOptions};
+use russh::{ChannelId, server::Handle};
 use termwiz::input::InputParser;
 use tokio::{
     select,
@@ -13,7 +14,7 @@ use tokio::{
     task::JoinHandle,
     time::{interval, Instant, Interval},
 };
-use tracing::warn;
+use tracing::{debug, info, trace, warn};
 
 use crate::{
     api::{
@@ -70,8 +71,10 @@ pub async fn create_and_detach<H: ClientHandler>(
     width: u32,
     height: u32,
     session_handler: &mut H,
+    handle: Handle,
+    channel_id: ChannelId
 ) -> Result<(UnboundedSender<TerminalInputs>, JoinHandle<()>, InputParser), crate::Error> {
-    let mut backend = CrosstermBackend::new(sync_sink::SinkTerminalHandle::new(channel));
+    let mut backend = CrosstermBackend::new(sync_sink::SinkTerminalHandle::new(handle, channel_id));
     backend.execute(EnterAlternateScreen)?;
     backend.execute(cursor::Hide)?;
     backend.execute(Clear(crossterm::terminal::ClearType::All))?;
@@ -99,7 +102,9 @@ async fn dispatch<H: ClientHandler>(
     handler: H::TerminalHandler,
     term: RatatuiTerminal,
 ) {
+    debug!("Dispatching new terminal session");
     let Err(error) = dispatch_inner::<H>(input, handler, term).await else {
+        info!("Session ended without errors");
         return;
     };
 
@@ -115,9 +120,15 @@ async fn dispatch_inner<H: ClientHandler>(
         RenderEngineApi::create(term.get_frame().area());
     let mut recv_buf = Vec::new();
     loop {
+        trace!("New client wait loop");
         recv_buf.clear();
         let state = select! {
-            _ = input.recv_many(&mut recv_buf, 20) => {
+            rez = input.recv_many(&mut recv_buf, 20) => {
+                trace!("Handler wake {rez:?}");
+                if rez == 0 {
+                    return Err(crate::Error::SessionClosed);
+                }
+
                 let mut current_state = CallbackRez::Continue;
                 for i in recv_buf.iter().rev() {
                     let TerminalInputs::Resize((width, height)) = i else {
@@ -148,18 +159,25 @@ async fn dispatch_inner<H: ClientHandler>(
                 };
                 handler.on_message(&mut engine, out)
             },
-            _anim = animation_interval(&mut engine.anim) => {
+            anim = animation_interval(&mut engine.anim) => {
+                trace!("Animation wake {anim:?}");
                 handler.on_animation(&mut engine)
             }
         };
+
+        trace!("Loop result: {state:?}");
 
         match state {
             CallbackRez::PushToRenderer => {
                 let inner = &mut handler;
                 //TODO: benchmark if block_in_place would make a difference
-                let _ = term.draw(move |x| {
+                let rez = term.draw(move |x| {
                     inner.draw(x);
                 });
+                trace!("Frame finished");
+                if let Err(error) = rez {
+                    warn!("Error while rendering: {error:?}");
+                }
             }
             CallbackRez::Terminate(msg) => {
                 //TODO make it less hacky
@@ -172,6 +190,8 @@ async fn dispatch_inner<H: ClientHandler>(
                 backend.write(msg.replace("\n", "\n\r").as_bytes())?;
                 backend.write(b"\n\r")?;
                 backend.flush()?;
+
+                backend.writer_mut().close().await?;
 
                 return Ok(());
             }

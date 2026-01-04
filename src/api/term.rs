@@ -52,6 +52,7 @@ pub trait EngineRef<T: SshTerminal> {
     fn current_size(&mut self) -> Rect;
 }
 
+#[derive(Debug)]
 pub enum CallbackRez {
     PushToRenderer,
     Continue,
