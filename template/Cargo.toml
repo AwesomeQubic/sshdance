@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sshdance = { git = "https://github.com/AwesomeQubic/sshdance.git", branch = "qubic-experimental"}
+sshdance = { git = "https://github.com/AwesomeQubic/sshdance.git" }
 tokio = { version = "1.41.1", features = ["full"]}
 ratatui = "0.30.0"
 tracing-subscriber = "0.3.18"
